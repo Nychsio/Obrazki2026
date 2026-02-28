@@ -1,0 +1,11 @@
+torch
+torchvision
+opencv-python
+numpy
+pandas
+matplotlib
+scikit-learn
+albumentations       # Najlepsza biblioteka do augmentacji danych obrazowych
+captum               # Kluczowa biblioteka od PyTorch do XAI (Grad-CAM)
+tqdm                 # Paski postępu
+pyyaml               # Do obsługi plików konfiguracyjnych

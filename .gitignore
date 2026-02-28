@@ -1,0 +1,17 @@
+# Dane i Modele
+data/
+models/*.pth
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints
+
+# Docker
+.docker/
