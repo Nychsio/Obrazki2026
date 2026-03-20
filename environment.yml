@@ -1,0 +1,22 @@
+name: ai-forensics-env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1  # Upewnij się, że pasuje do Twoich sterowników, jeśli masz GPU
+  - transformers
+  - datasets
+  - pillow
+  - scikit-learn
+  - pip
+  - pip:
+      - huggingface-hub
+      - opencv-python
+      - albumentations
+      - captum
+      

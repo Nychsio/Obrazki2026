@@ -9,3 +9,8 @@ albumentations       # Najlepsza biblioteka do augmentacji danych obrazowych
 captum               # Kluczowa biblioteka od PyTorch do XAI (Grad-CAM)
 tqdm                 # Paski postępu
 pyyaml               # Do obsługi plików konfiguracyjnych
+transformers==4.38.2
+datasets==2.18.0
+huggingface-hub==0.21.4
+pillow==10.2.0
+scikit-learn==1.4.1post1
