@@ -36,12 +36,13 @@ def test_and_explain():
     batch = next(iter(loader))
     input_tensor = batch['image'].to(device)
     
-    # Bezpieczne wyciąganie etykiety (odporne na kaprysy Hugging Face)
-    raw_label = batch['label']
-    if isinstance(raw_label, list):
-        label = int(raw_label[0])
+    # --- TO JEST POPRAWIONY BLOK (LINIA 42+) ---
+    if isinstance(batch['label'], (list, tuple)):
+        label = int(batch['label'][0])
     else:
-        label = int(raw_label.item())
+        label = int(batch['label'].item())
+    # ------------------------------------------
+
     
     # 3. Predykcja
     with torch.no_grad():

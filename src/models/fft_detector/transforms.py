@@ -2,7 +2,7 @@ import torch
 import torchvision.transforms.functional as F
 from torchvision import transforms
 
-class FourierMagnitudeTransform:
+class ComplexFourierTransform:
     """
     Konwertuje obraz do widma amplitudowego Fouriera (Magnitude Spectrum).
     Idealne do wychwytywania artefaktów wysokich częstotliwości z modeli generatywnych.
@@ -42,4 +42,9 @@ class FourierMagnitudeTransform:
             else:
                 normalized_magnitude = (magnitude_log - min_val) / (denom + eps)
         
-        return normalized_magnitude
+        # 7. Obliczenie fazy i normalizacja z przedziału [-pi, pi] do [0, 1]
+        phase = torch.angle(fft_shifted)
+        normalized_phase = (phase + torch.pi) / (2 * torch.pi)
+
+        # 8. Połączenie amplitudy i fazy w tensor 2-kanałowy: [2, H, W]
+        return torch.cat((normalized_magnitude, normalized_phase), dim=0)

@@ -9,15 +9,16 @@ class FFTResNetDetector(nn.Module):
         # Ładujemy pretrenowany model (Transfer Learning przyspieszy zbieżność)
         self.backbone = resnet18(weights=ResNet18_Weights.DEFAULT)
         
-        # Modulacja pierwszej warstwy dla 1 kanału (zamiast 3 RGB)
+        # Modulacja pierwszej warstwy dla 2 kanałów (Amplitude + Phase) zamiast 3 RGB
+        # Uśredniamy wagi wzdłuż osi kanałów i powielamy je do 2 kanałów wejściowych
         original_conv1 = self.backbone.conv1
         self.backbone.conv1 = nn.Conv2d(
-            1, 64, kernel_size=7, stride=2, padding=3, bias=False
+            2, 64, kernel_size=7, stride=2, padding=3, bias=False
         )
-        # Używamy średniej po kanałach zamiast sumy, by zachować skalę wag pretrenowanego modelu
+        # Zachowujemy skalę wag pretrenowanego modelu i dopasowujemy kształt do [64, 2, 7, 7]
         with torch.no_grad():
             self.backbone.conv1.weight = nn.Parameter(
-                torch.mean(original_conv1.weight, dim=1, keepdim=True)
+                torch.mean(original_conv1.weight, dim=1, keepdim=True).repeat(1, 2, 1, 1)
             )
             
         # Zmiana ostatniej warstwy w pełni połączonej (Linear) do klasyfikacji binarnej

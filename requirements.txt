@@ -1,16 +1,27 @@
-torch
-torchvision
-opencv-python
-numpy
-pandas
-matplotlib
-scikit-learn
-albumentations       # Najlepsza biblioteka do augmentacji danych obrazowych
-captum               # Kluczowa biblioteka od PyTorch do XAI (Grad-CAM)
-tqdm                 # Paski postępu
-pyyaml               # Do obsługi plików konfiguracyjnych
-transformers==4.38.2
-datasets==2.18.0
-huggingface-hub==0.21.4
-pillow==10.2.0
-scikit-learn==1.4.1post1
+# Core ML Framework
+torch>=2.2.0
+torchvision>=0.17.0
+torchaudio>=2.2.0
+
+# Computer Vision & Augmentation
+opencv-python-headless  # Wersja bez GUI, lepsza do kontenerów/serwerów
+albumentations>=1.4.0
+pillow>=10.2.0
+
+# XAI & Interpretability
+captum>=0.7.0           # Do Grad-CAM i Integrated Gradients
+
+# Model Hubs & Transformers
+transformers>=4.38.2
+timm>=0.9.16            # Kluczowe dla gotowych modeli CV
+datasets>=2.18.0
+huggingface-hub>=0.21.4
+safetensors>=0.4.0
+
+# Data Science & Utilities
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.4.1
+matplotlib>=3.8.0
+tqdm>=4.66.0
+pyyaml>=6.0.1

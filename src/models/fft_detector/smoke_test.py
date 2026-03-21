@@ -26,7 +26,7 @@ def main():
     transforms_mod = load_module_from_path("fft_transforms_module", transforms_path)
 
     FFTResNetDetector = getattr(model_mod, "FFTResNetDetector")
-    FourierMagnitudeTransform = getattr(transforms_mod, "FourierMagnitudeTransform")
+    ComplexFourierTransform = getattr(transforms_mod, "ComplexFourierTransform")
 
     # Parametry testu
     batch_size = 4
@@ -38,16 +38,16 @@ def main():
         arr = np.random.randint(0, 256, size=(img_size, img_size, 3), dtype=np.uint8)
         images.append(Image.fromarray(arr))
 
-    transform = FourierMagnitudeTransform()
+    transform = ComplexFourierTransform()
 
-    # Zastosuj transform na każdej próbce i utwórz batch tensor [B,1,H,W]
+    # Zastosuj transform na każdej próbce i utwórz batch tensor [B,2,H,W]
     transformed = [transform(img) for img in images]
-    # Każdy element powinien mieć kształt [1, H, W]
+    # Każdy element powinien mieć kształt [2, H, W]
     batch_tensor = torch.stack(transformed, dim=0)
 
-    # Sprawdź kształt: [B, 1, H, W]
+    # Sprawdź kształt: [B, 2, H, W]
     assert batch_tensor.shape[0] == batch_size, f"Batch size mismatch: {batch_tensor.shape}"
-    assert batch_tensor.dim() == 4 and batch_tensor.shape[1] == 1, f"Unexpected tensor shape: {batch_tensor.shape}"
+    assert batch_tensor.dim() == 4 and batch_tensor.shape[1] == 2, f"Unexpected tensor shape: {batch_tensor.shape}"
 
     # Utwórz model i wykonaj forward
     model = FFTResNetDetector(num_classes=1)
