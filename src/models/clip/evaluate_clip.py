@@ -50,9 +50,10 @@ def evaluate_model(model_weights_path="checkpoints/clip_classifier_best.pth", te
                 print("\nOsiągnięto koniec strumienia danych.")
                 break
                 
-            pixel_values, labels = pixel_values.to(device), labels.to(device)
+            pixel_values = pixel_values.to(device)
+            labels = labels.to(device=device, dtype=torch.float32).view(-1, 1)
             
-            logits = model(pixel_values)
+            logits = model(pixel_values).view(-1, 1)
             loss = criterion(logits, labels)
             test_loss += loss.item()
             actual_test_steps += 1
@@ -60,9 +61,9 @@ def evaluate_model(model_weights_path="checkpoints/clip_classifier_best.pth", te
             probs = torch.sigmoid(logits)
             preds = (probs > 0.5).float()
             
-            all_labels.extend(labels.cpu().numpy())
-            all_preds.extend(preds.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy().reshape(-1))
+            all_preds.extend(preds.cpu().numpy().reshape(-1))
+            all_probs.extend(probs.cpu().numpy().reshape(-1))
 
     # 4. Obliczanie metryk
     # Poprawne obliczenie średniej straty: dzielimy przez faktyczną liczbę kroków

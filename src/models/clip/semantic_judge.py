@@ -42,6 +42,6 @@ class SemanticJudgeCLIP(nn.Module):
         # Pobranie osadzenia z tokena [CLS] (globalna reprezentacja obrazu)
         pooled_output = outputs.pooler_output 
         
-        # Klasyfikacja
-        probability = self.classifier(pooled_output)
-        return probability
+        # Klasyfikacja: zwracamy surowe logity (bez Sigmoid)
+        logits = self.classifier(pooled_output)
+        return logits

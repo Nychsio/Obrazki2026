@@ -55,10 +55,11 @@ def train_clip():
             except StopIteration:
                 break # Koniec strumienia
                 
-            pixel_values, labels = pixel_values.to(device), labels.to(device)
+            pixel_values = pixel_values.to(device)
+            labels = labels.to(device=device, dtype=torch.float32).view(-1, 1)
             
             optimizer.zero_grad()
-            logits = model(pixel_values)
+            logits = model(pixel_values).view(-1, 1)
             loss = criterion(logits, labels)
             
             loss.backward()
@@ -85,9 +86,10 @@ def train_clip():
                 except StopIteration:
                     break
                     
-                pixel_values, labels = pixel_values.to(device), labels.to(device)
+                pixel_values = pixel_values.to(device)
+                labels = labels.to(device=device, dtype=torch.float32).view(-1, 1)
                 
-                logits = model(pixel_values)
+                logits = model(pixel_values).view(-1, 1)
                 loss = criterion(logits, labels)
                 val_loss += loss.item()
                 actual_val_steps += 1
@@ -96,9 +98,9 @@ def train_clip():
                 probs = torch.sigmoid(logits)
                 preds = (probs > 0.5).float()
                 
-                all_labels.extend(labels.cpu().numpy())
-                all_preds.extend(preds.cpu().numpy())
-                all_probs.extend(probs.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy().reshape(-1))
+                all_preds.extend(preds.cpu().numpy().reshape(-1))
+                all_probs.extend(probs.cpu().numpy().reshape(-1))
                 
         avg_val_loss = val_loss / actual_val_steps if actual_val_steps > 0 else 0
         scheduler.step()

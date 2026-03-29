@@ -1,12 +1,62 @@
 import torch
+import random
 from datasets import load_dataset
 from transformers import CLIPProcessor
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, IterableDataset
+
+
+class BufferShuffledIterableDataset(IterableDataset):
+    """
+    Prosty shuffle buforowy dla strumieni (IterableDataset).
+    """
+
+    def __init__(self, iterable_dataset, buffer_size=10000, seed=42):
+        super().__init__()
+        self.iterable_dataset = iterable_dataset
+        self.buffer_size = buffer_size
+        self.seed = seed
+
+    def __iter__(self):
+        rng = random.Random(self.seed)
+        stream_iter = iter(self.iterable_dataset)
+
+        buffer = []
+        for _ in range(self.buffer_size):
+            try:
+                buffer.append(next(stream_iter))
+            except StopIteration:
+                break
+
+        if not buffer:
+            return
+
+        while True:
+            try:
+                new_item = next(stream_iter)
+            except StopIteration:
+                break
+
+            random_idx = rng.randint(0, len(buffer) - 1)
+            yield buffer[random_idx]
+            buffer[random_idx] = new_item
+
+        rng.shuffle(buffer)
+        for item in buffer:
+            yield item
 
 class CLIPDataStreamer:
-    def __init__(self, dataset_name="ComplexDataLab/OpenFake", model_name="openai/clip-vit-base-patch32", batch_size=32):
+    def __init__(
+        self,
+        dataset_name="ComplexDataLab/OpenFake",
+        model_name="openai/clip-vit-base-patch32",
+        batch_size=32,
+        shuffle_buffer_size=10000,
+        shuffle_seed=42,
+    ):
         self.dataset_name = dataset_name
         self.batch_size = batch_size
+        self.shuffle_buffer_size = shuffle_buffer_size
+        self.shuffle_seed = shuffle_seed
         # CLIPProcessor automatycznie robi resize (224x224) i normalizację (mean, std)
         self.processor = CLIPProcessor.from_pretrained(model_name)
         
@@ -17,10 +67,17 @@ class CLIPDataStreamer:
         print(f"Inicjalizacja strumienia dla zbioru: {self.dataset_name} (split: {split})")
         dataset = load_dataset(self.dataset_name, split=split, streaming=True)
         
-        # Dodaj shuffle tylko dla danych treningowych
+        # Dodaj shuffle buforowy tylko dla danych treningowych
         if split == "train":
-            dataset = dataset.shuffle(seed=42, buffer_size=5000)
-            print("✓ Dodano shuffle dla danych treningowych (buffer_size=5000)")
+            dataset = BufferShuffledIterableDataset(
+                dataset,
+                buffer_size=self.shuffle_buffer_size,
+                seed=self.shuffle_seed,
+            )
+            print(
+                "✓ Dodano buffer shuffle dla danych treningowych "
+                f"(buffer_size={self.shuffle_buffer_size})"
+            )
             
         return dataset
 
@@ -57,7 +114,8 @@ class CLIPDataStreamer:
         dataloader = DataLoader(
             dataset, 
             batch_size=self.batch_size, 
-            collate_fn=self.collate_fn
+            collate_fn=self.collate_fn,
+            shuffle=False,
         )
         return dataloader
 

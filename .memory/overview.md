@@ -1,0 +1,125 @@
+# Memory Bank - Projekt Detekcji Deepfake i Obrazów Wygenerowanych przez AI
+
+## Przegląd Projektu
+
+Projekt implementuje system detekcji obrazów wygenerowanych przez AI (deepfake) wykorzystujący różne podejścia:
+1. **Analiza szumów (Noise)**: Wykrywanie artefaktów szumowych charakterystycznych dla generowanych obrazów
+2. **Analiza cech RGB**: Wykorzystanie wstępnie wytrenowanego EfficientNet-B0 do klasyfikacji semantycznej
+3. **Analiza częstotliwościowa (FFT)**: Detekcja artefaktów w dziedzinie częstotliwości za pomocą transformaty Fouriera
+4. **Model CLIP**: Fine-tuning modelu CLIP do klasyfikacji binarnej
+
+## Kluczowe Komponenty
+
+### Modele
+1. **Noise Binary Classifier** (`src/noise/`)
+   - Architektura: CNN na szumach resztkowych
+   - Filtr: High-pass Gaussian filter
+   - Zapisany model: `best_noise_model.pt`
+
+2. **RGB Classifier** (`src/rgb/`)
+   - Backbone: EfficientNet-B0 (timm)
+   - Głowa klasyfikacyjna: Linear(1280→1)
+   - Zapisany model: `best_rgb_model.pt`
+
+3. **FFT ResNet Detector** (`src/models/fft_detector/`)
+   - Backbone: ResNet18 z modyfikacją dla 2 kanałów (amplituda + faza)
+   - Transformacja: ComplexFourierTransform
+   - Zapisany model: `fft_detector_best.pth`
+
+4. **Semantic Judge CLIP** (`src/models/clip/`)
+   - Model: CLIP ViT-Base-Patch32
+   - Głowa klasyfikacyjna: Linear(768→256→1)
+   - Status: Wymaga poprawek (zobacz audyt)
+
+### Dane
+- **Dataset**: OpenFake (ComplexDataLab/OpenFake) z Hugging Face
+- **Tryb**: Streaming dla efektywnego ładowania dużych zbiorów
+- **Klasy**: Real (0) vs Fake (1)
+- **Transformacje**: Augmentacje (kompresja, rozmycie, szum) dla treningu
+
+### Narzędzia
+- **Trening**: Mixed precision training, TensorBoard logging
+- **XAI**: Grad-CAM, attention maps (CLIP)
+- **Ewaluacja**: ROC-AUC, F1-Score, precision, recall
+- **Deployment**: Docker, konfiguracje YAML
+
+## Status Projektu
+
+### ✅ Działające komponenty
+1. Model Noise - pełna implementacja
+2. Model RGB - pełna implementacja z XAI (Grad-CAM)
+3. Model FFT - podstawowa implementacja (wymaga poprawek)
+4. Pipeline danych - streaming z OpenFake
+
+### ⚠️ Wymagające poprawek
+1. Model CLIP - błędy w obliczeniach loss, brak shuffle danych
+2. Model FFT - błędy syntaktyczne w train.py, brak walidacji
+3. Dokumentacja - niekompletna w niektórych obszarach
+
+### 🚀 Planowane rozszerzenia
+1. Ensemble modeli (noise + RGB + FFT + CLIP)
+2. Real-time API REST
+3. Multi-modal detection (metadane + obraz)
+4. Extended datasets
+
+## Struktura Katalogów
+
+```
+.memory/
+├── overview.md              # Ten plik
+├── models/                  # Dokumentacja modeli
+├── data/                    # Dokumentacja danych
+├── training/                # Procesy treningowe
+├── evaluation/              # Metryki i ewaluacja
+├── deployment/              # Deployment i infrastruktura
+└── issues/                  # Zidentyfikowane problemy
+```
+
+## Szybkie Odwołania
+
+### Uruchomienie treningu
+```bash
+# Model noise
+python src/noise/train.py
+
+# Model RGB  
+python src/rgb/train.py
+
+# Model FFT
+python src/models/fft_detector/train.py
+
+# Model CLIP
+python src/models/clip/train_clip.py
+```
+
+### Inferencja
+```bash
+# RGB model
+python src/rgb/inference.py test_image.jpg --model_path best_rgb_model.pt
+
+# FFT model
+python src/models/fft_detector/predict_single.py test_image.jpg
+
+# XAI (Grad-CAM)
+python src/rgb/explain.py
+```
+
+### Środowisko
+```bash
+# Conda
+conda env create -f environment.yml
+
+# Pip
+pip install -r requirements.txt
+```
+
+## Kontakt i Wsparcie
+
+- **Repozytorium**: git@github.com:Nychsio/Obrazki2026.git
+- **Ostatni commit**: 73c95817137ac92e89138addc89646ee02bf20ad
+- **Środowisko**: Python 3.10, PyTorch 2.2+, CUDA 12.1 (opcjonalnie)
+
+---
+
+*Memory Bank zaktualizowany: 2026-03-29*  
+*Cel: Centralne źródło wiedzy o projekcie dla nowych developerów i utrzymanie kontekstu*
