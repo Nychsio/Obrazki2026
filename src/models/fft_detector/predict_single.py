@@ -21,7 +21,7 @@ def predict_image(image_path):
         print(f"BŁĄD: Nie znaleziono pliku wag w {checkpoint_path}")
         return
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     if 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
     else:
