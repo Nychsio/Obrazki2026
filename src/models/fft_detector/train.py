@@ -52,7 +52,11 @@ def train():
             running_loss += loss.item() * inputs.size(0)
             progress_bar.set_postfix({'Loss': f"{loss.item():.4f}"})
             
-        epoch_train_loss = running_loss / 4000 
+        # Obliczanie średniego loss na podstawie faktycznej liczby próbek
+        total_train_samples = 0
+        for batch in train_loader:
+            total_train_samples += batch['image'].size(0)
+        epoch_train_loss = running_loss / total_train_samples if total_train_samples > 0 else 0.0 
         
         # --- FAZA WALIDACJI ---
         model.eval()
@@ -83,7 +87,11 @@ def train():
                 all_probs.extend(probs.cpu().numpy())
                 all_preds.extend(preds.cpu().numpy())
                 
-        epoch_val_loss = val_loss / 1000
+        # Obliczanie średniego val loss na podstawie faktycznej liczby próbek walidacyjnych
+        total_val_samples = 0
+        for batch in val_loader:
+            total_val_samples += batch['image'].size(0)
+        epoch_val_loss = val_loss / total_val_samples if total_val_samples > 0 else 0.0
         
         # --- NOWOŚĆ: Obliczanie zaawansowanych metryk ---
         # Spłaszczamy listy
