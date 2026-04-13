@@ -1,5 +1,5 @@
 """
-MetaJudgeEnsemble - System późnej fuzji (Late Fusion) dla 4 modeli detekcji.
+MetaJudgeEnsemble - System późnej fuzji (Late Fusion) dla 5 modeli detekcji.
 """
 
 import torch
@@ -13,6 +13,7 @@ try:
     from src.rgb.train import RGBClassifier
     from src.models.clip.semantic_judge import SemanticJudgeCLIP
     from src.models.fft_detector.model import FFTResNetDetector
+    from src.models.gradient_pca.model import GradientPCADetector
 except ImportError as e:
     warnings.warn(f"Cannot import base models: {e}")
     # Placeholder definitions for sanity check
@@ -59,10 +60,19 @@ except ImportError as e:
             x = self.conv(x)
             x = x.view(x.size(0), -1)
             return self.classifier(x)
+    
+    class GradientPCADetector(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.classifier = nn.Linear(3 * 224 * 224, 1)
+        
+        def forward(self, x):
+            x = x.view(x.size(0), -1)
+            return self.classifier(x)
 
 
 class MetaJudgeEnsemble(nn.Module):
-    """Meta-Classifier Ensemble for late fusion of 4 detection models."""
+    """Meta-Classifier Ensemble for late fusion of 5 detection models."""
     
     def __init__(self, device: Optional[torch.device] = None):
         super().__init__()
@@ -75,11 +85,12 @@ class MetaJudgeEnsemble(nn.Module):
         self.rgb_model = RGBClassifier()
         self.clip_model = SemanticJudgeCLIP()
         self.fft_model = FFTResNetDetector()
+        self.pca_model = GradientPCADetector()
         
         self._freeze_base_models()
         
         self.fusion_head = nn.Sequential(
-            nn.Linear(4, 16),
+            nn.Linear(5, 16),
             nn.ReLU(),
             nn.Dropout(0.2),
             nn.Linear(16, 1),
@@ -88,12 +99,12 @@ class MetaJudgeEnsemble(nn.Module):
         self.to(self.device)
     
     def _freeze_base_models(self):
-        for model in [self.noise_model, self.rgb_model, self.clip_model, self.fft_model]:
+        for model in [self.noise_model, self.rgb_model, self.clip_model, self.fft_model, self.pca_model]:
             for param in model.parameters():
                 param.requires_grad = False
     
     def load_base_weights(self, weight_paths: Dict[str, str]):
-        required_keys = ['noise', 'rgb', 'clip', 'fft']
+        required_keys = ['noise', 'rgb', 'clip', 'fft', 'pca']
         
         for key in required_keys:
             if key not in weight_paths:
@@ -104,7 +115,8 @@ class MetaJudgeEnsemble(nn.Module):
             for model_name, model in [('noise', self.noise_model),
                                      ('rgb', self.rgb_model),
                                      ('clip', self.clip_model),
-                                     ('fft', self.fft_model)]:
+                                     ('fft', self.fft_model),
+                                     ('pca', self.pca_model)]:
                 checkpoint = torch.load(weight_paths[model_name], map_location='cpu')
                 if 'model_state_dict' in checkpoint:
                     model.load_state_dict(checkpoint['model_state_dict'])
@@ -114,16 +126,17 @@ class MetaJudgeEnsemble(nn.Module):
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Weight file not found: {e}")
         
-        for model in [self.noise_model, self.rgb_model, self.clip_model, self.fft_model]:
+        for model in [self.noise_model, self.rgb_model, self.clip_model, self.fft_model, self.pca_model]:
             model.eval()
         
         print("Base model weights loaded successfully.")
     
-    def forward(self, img_noise, img_rgb, img_clip, img_fft):
+    def forward(self, img_noise, img_rgb, img_clip, img_fft, img_pca):
         img_noise = img_noise.to(self.device)
         img_rgb = img_rgb.to(self.device)
         img_clip = img_clip.to(self.device)
         img_fft = img_fft.to(self.device)
+        img_pca = img_pca.to(self.device)
         
         base_logits = []
         
@@ -132,13 +145,14 @@ class MetaJudgeEnsemble(nn.Module):
             base_logits.append(self.rgb_model(img_rgb))
             base_logits.append(self.clip_model(img_clip))
             base_logits.append(self.fft_model(img_fft))
+            base_logits.append(self.pca_model(img_pca))
         
         concatenated = torch.cat(base_logits, dim=1)
         return self.fusion_head(concatenated)
     
-    def predict_proba(self, img_noise, img_rgb, img_clip, img_fft):
+    def predict_proba(self, img_noise, img_rgb, img_clip, img_fft, img_pca):
         with torch.no_grad():
-            logits = self.forward(img_noise, img_rgb, img_clip, img_fft)
+            logits = self.forward(img_noise, img_rgb, img_clip, img_fft, img_pca)
             return torch.sigmoid(logits)
 
 
@@ -168,21 +182,23 @@ if __name__ == "__main__":
     dummy_rgb = torch.randn(batch_size, 3, 224, 224)
     dummy_clip = torch.randn(batch_size, 3, 224, 224)
     dummy_fft = torch.randn(batch_size, 2, 224, 224)
+    dummy_pca = torch.randn(batch_size, 3, 224, 224)
     
     print(f"\nDummy tensors created:")
     print(f"  noise: {dummy_noise.shape}")
     print(f"  rgb: {dummy_rgb.shape}")
     print(f"  clip: {dummy_clip.shape}")
     print(f"  fft: {dummy_fft.shape}")
+    print(f"  pca: {dummy_pca.shape}")
     
     print("\n--- Testing forward pass ---")
     try:
         with torch.no_grad():
-            output = model(dummy_noise, dummy_rgb, dummy_clip, dummy_fft)
+            output = model(dummy_noise, dummy_rgb, dummy_clip, dummy_fft, dummy_pca)
             print(f"Success! Output shape: {output.shape}")
             print(f"Output values: {output}")
             
-            probs = model.predict_proba(dummy_noise, dummy_rgb, dummy_clip, dummy_fft)
+            probs = model.predict_proba(dummy_noise, dummy_rgb, dummy_clip, dummy_fft, dummy_pca)
             print(f"\nProbabilities shape: {probs.shape}")
             print(f"Probabilities: {probs}")
         
