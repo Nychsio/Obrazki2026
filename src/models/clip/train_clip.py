@@ -14,11 +14,11 @@ def train_clip():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Rozpoczynam trening na: {device}")
     
-    batch_size = 32
-    max_steps_per_epoch = 1000  # Ile batchy to jedna epoka (do dostosowania)
-    val_steps = 200             # Ile batchy sprawdzamy w walidacji
-    epochs = 10
-    patience = 3                # Early Stopping: ile epok czekać bez poprawy
+    batch_size = 32  # CLIP może potrzebować mniejszego batch_size ze względu na duży model
+    max_steps_per_epoch = 2000  # Zwiększone dla pełnego treningu
+    val_steps = 400             # Zwiększone dla pełnego treningu
+    epochs = 12                 # Zwiększone dla pełnego treningu
+    patience = 4                # Early Stopping: ile epok czekać bez poprawy
     
     # 2. Inicjalizacja Modelu i Danych
     model = SemanticJudgeCLIP(freeze_backbone=True).to(device)
@@ -118,8 +118,16 @@ def train_clip():
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             epochs_no_improve = 0
-            # Zapisujemy TYLKO wagi naszej głowy (oszczędność gigabajtów!)
-            torch.save(model.classifier.state_dict(), "checkpoints/clip_classifier_best.pth")
+            # Zapisujemy pełny model (klasyfikator + backbone) dla kompletności
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'classifier_state_dict': model.classifier.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss,
+                'roc_auc': auc,
+                'f1_score': f1
+            }, "checkpoints/clip_model_best.pth")
             print("🌟 Zapisano nowy najlepszy model!")
         else:
             epochs_no_improve += 1

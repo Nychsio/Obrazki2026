@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
 import numpy as np
+import os
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
 
 from src.data.data_loader import get_dataloaders
@@ -12,8 +13,11 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używane urządzenie: {device}")
 
+    # Utworzenie katalogu checkpoints jeśli nie istnieje
+    os.makedirs("checkpoints", exist_ok=True)
+
     model = FFTResNetDetector(num_classes=1).to(device)
-    train_loader, val_loader = get_dataloaders(batch_size=32, train_size=4000, val_size=1000)
+    train_loader, val_loader = get_dataloaders(batch_size=64, train_size=8000, val_size=2000)  # Zwiększone dla RTX 3090 Ti
     
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5) 
@@ -21,7 +25,7 @@ def train():
     # --- NOWOŚĆ: LR Scheduler (zgodnie z audytem) ---
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
 
-    epochs = 15 
+    epochs = 12  # Zwiększone dla pełnego treningu
     
     # --- NOWOŚĆ: Parametry do Early Stopping ---
     best_val_loss = float('inf')
@@ -129,7 +133,7 @@ def train():
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': epoch_val_loss,
                 'metrics': {'acc': val_acc, 'auc': val_auc, 'f1': val_f1}
-            }, "fft_detector_best.pth")
+            }, "checkpoints/fft_detector_best.pth")
         else:
             trigger_times += 1
             print(f"   ⚠️ Brak poprawy. Early stopping counter: {trigger_times}/{patience}")

@@ -125,13 +125,17 @@ def validate(
 
 
 def main() -> None:
-	batch_size = 32
+	batch_size = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
 	num_workers = 0  # Keep 0 for stable Windows behavior.
-	epochs = 5
+	epochs = 12  # Zwiększone dla pełnego treningu
 	learning_rate = 1e-4
-	steps_per_epoch = 10
-	steps_per_val = 10
-	checkpoint_path = "best_noise_model.pt"
+	steps_per_epoch = 1000  # Zwiększone dla pełnego treningu
+	steps_per_val = 200  # Zwiększone dla pełnego treningu
+	checkpoint_path = "checkpoints/best_noise_model.pt"
+
+	# Utworzenie katalogu checkpoints jeśli nie istnieje
+	import os
+	os.makedirs("checkpoints", exist_ok=True)
 
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	use_amp = device.type == "cuda"

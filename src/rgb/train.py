@@ -158,13 +158,16 @@ def validate(model, dataloader, criterion, device, epoch, writer, steps_per_val=
 
 def main():
     # Configuration
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
     NUM_WORKERS = 0 # Adjusted to 0 for Windows compatibility
-    EPOCHS = 5
+    EPOCHS = 12  # Zwiększone dla pełnego treningu
     LEARNING_RATE = 1e-4
-    STEPS_PER_EPOCH = 20 # Adjust based on dataset size and time constraints (streaming)
-    VAL_STEPS = 100
-    CHECKPOINT_PATH = "best_rgb_model.pt"
+    STEPS_PER_EPOCH = 1000  # Zwiększone dla pełnego treningu
+    VAL_STEPS = 200  # Zwiększone dla pełnego treningu
+    CHECKPOINT_PATH = "checkpoints/best_rgb_model.pt"
+    
+    # Utworzenie katalogu checkpoints jeśli nie istnieje
+    os.makedirs("checkpoints", exist_ok=True)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
