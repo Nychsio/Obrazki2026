@@ -62,9 +62,10 @@ def get_transforms():
     """
     return A.Compose([
         # Strong augmentations
-        A.ImageCompression(quality_lower=60, quality_upper=100, p=0.5),
+        A.ImageCompression(quality_range=(60, 100), p=0.5),
         A.GaussianBlur(blur_limit=(3, 7), p=0.5), # Standard blur
-        A.GaussNoise(var_limit=(10.0, 50.0), p=0.5), # Add noise
+        # var_limit=(10, 50) -> std ~= (sqrt(10), sqrt(50)) / 255
+        A.GaussNoise(std_range=(0.0124, 0.0277), p=0.5), # Add noise
         
         # Essential specific processing
         A.Resize(224, 224), # Resize to standard efficientnet size (implied requirement usually)
