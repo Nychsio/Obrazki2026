@@ -25,11 +25,12 @@ def evaluate_model(model_weights_path="checkpoints/clip_classifier_best.pth", te
     batch_size = 32
     streamer = CLIPDataStreamer(batch_size=batch_size)
     
-    # Próbujemy załadować split 'test' (jeśli OpenFake go nie ma, użyj 'validation')
+    # OpenFake używa splitu 'test' zamiast 'validation'.
+    # Fallback na 'validation' pozostaje dla kompatybilności wstecznej i jest mapowany w streamerze na 'test'.
     try:
         test_loader = streamer.create_dataloader(split="test")
     except Exception as e:
-        print(f"Nie udało się załadować splitu 'test', próbuję 'validation'. Błąd: {e}")
+        print(f"Nie udało się załadować splitu 'test', próbuję aliasu 'validation'. Błąd: {e}")
         test_loader = streamer.create_dataloader(split="validation")
 
     criterion = nn.BCEWithLogitsLoss()

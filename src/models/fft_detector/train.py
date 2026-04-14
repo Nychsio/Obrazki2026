@@ -9,6 +9,36 @@ from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_sco
 from src.data.data_loader import get_dataloaders
 from src.models.fft_detector.model import FFTResNetDetector
 
+
+def rgb_to_fft_two_channel(inputs: torch.Tensor) -> torch.Tensor:
+    """
+    Konwertuje batch obrazów [B, 3, H, W] do reprezentacji FFT [B, 2, H, W]
+    (kanały: log-amplituda oraz faza), w pełni tensorowo na aktualnym urządzeniu.
+    """
+    if inputs.ndim != 4:
+        raise ValueError(f"Oczekiwano tensora 4D [B, C, H, W], otrzymano: {tuple(inputs.shape)}")
+
+    channels = inputs.size(1)
+    if channels == 2:
+        return inputs
+
+    if channels == 3:
+        # Luminancja w standardzie ITU-R BT.601
+        rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=inputs.device, dtype=inputs.dtype).view(1, 3, 1, 1)
+        gray = (inputs * rgb_weights).sum(dim=1)
+    elif channels == 1:
+        gray = inputs.squeeze(1)
+    else:
+        raise ValueError(f"Nieobsługiwana liczba kanałów wejściowych: {channels}")
+
+    fft = torch.fft.fft2(gray, dim=(-2, -1), norm="ortho")
+    fft_shifted = torch.fft.fftshift(fft, dim=(-2, -1))
+
+    amplitude = torch.log1p(torch.abs(fft_shifted))
+    phase = torch.angle(fft_shifted)
+
+    return torch.stack((amplitude, phase), dim=1)
+
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używane urządzenie: {device}")
@@ -42,6 +72,7 @@ def train():
         progress_bar = tqdm(train_loader, desc=f"Epoka {epoch+1}/{epochs} [Train]")
         for batch in progress_bar:
             inputs = batch['image'].to(device)
+            inputs = rgb_to_fft_two_channel(inputs)
             if isinstance(batch['label'], (list, tuple)):
                 labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
             else:
@@ -74,6 +105,7 @@ def train():
         with torch.no_grad():
             for batch in tqdm(val_loader, desc=f"Epoka {epoch+1}/{epochs} [Val]", leave=False):
                 inputs = batch['image'].to(device)
+                inputs = rgb_to_fft_two_channel(inputs)
                 if isinstance(batch['label'], (list, tuple)):
                     labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
                 else:

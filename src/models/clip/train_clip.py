@@ -25,7 +25,7 @@ def train_clip():
     streamer = CLIPDataStreamer(batch_size=batch_size)
     
     train_loader = streamer.create_dataloader(split="train")
-    val_loader = streamer.create_dataloader(split="validation") # Zakładam, że OpenFake ma ten split
+    val_loader = streamer.create_dataloader(split="test")
     
     # 3. Optymalizator i Strata
     criterion = nn.BCEWithLogitsLoss() # Stabilne numerycznie połączenie Sigmoida i BCE

@@ -59,11 +59,18 @@ class CLIPDataStreamer:
         self.shuffle_seed = shuffle_seed
         # CLIPProcessor automatycznie robi resize (224x224) i normalizację (mean, std)
         self.processor = CLIPProcessor.from_pretrained(model_name)
+
+    def _normalize_split(self, split):
+        if split == "validation":
+            print("⚠️ Split 'validation' nie istnieje w OpenFake, używam splitu 'test'.")
+            return "test"
+        return split
         
     def get_stream(self, split="train"):
         """
         Ładuje zbiór danych w trybie streaming (nie pobiera całości na dysk!).
         """
+        split = self._normalize_split(split)
         print(f"Inicjalizacja strumienia dla zbioru: {self.dataset_name} (split: {split})")
         dataset = load_dataset(self.dataset_name, split=split, streaming=True)
         
