@@ -1,6 +1,8 @@
 import torch
 import random
-from datasets import load_dataset
+import io
+import PIL.Image
+from datasets import load_dataset, Image
 from transformers import CLIPProcessor
 from torch.utils.data import DataLoader, IterableDataset
 from PIL import UnidentifiedImageError
@@ -59,9 +61,14 @@ class CorruptedImageSafeIterableDataset(IterableDataset):
     def __iter__(self):
         for item in self.iterable_dataset:
             try:
-                image = item["image"].convert("RGB")
+                raw_bytes = item["image"]["bytes"]
+                if raw_bytes is None and "path" in item["image"]:
+                    with open(item["image"]["path"], "rb") as f:
+                        raw_bytes = f.read()
+
+                img = PIL.Image.open(io.BytesIO(raw_bytes)).convert("RGB")
                 safe_item = dict(item)
-                safe_item["image"] = image
+                safe_item["image"] = img
                 yield safe_item
             except (UnidentifiedImageError, OSError) as e:
                 print(f"Skipping corrupted image: {e}")
@@ -99,6 +106,9 @@ class CLIPDataStreamer:
         split = self._normalize_split(split)
         print(f"Inicjalizacja strumienia dla zbioru: {self.dataset_name} (split: {split})")
         dataset = load_dataset(self.dataset_name, split=split, streaming=True)
+        
+        # Wyłączenie automatycznego dekodowania obrazów – zabezpieczenie przed wywalającymi się danymi
+        dataset = dataset.cast_column('image', Image(decode=False))
         
         # Dodaj shuffle buforowy tylko dla danych treningowych
         if split == "train":
