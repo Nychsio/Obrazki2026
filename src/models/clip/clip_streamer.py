@@ -3,6 +3,7 @@ import random
 from datasets import load_dataset
 from transformers import CLIPProcessor
 from torch.utils.data import DataLoader, IterableDataset
+from PIL import UnidentifiedImageError
 
 
 class BufferShuffledIterableDataset(IterableDataset):
@@ -43,6 +44,31 @@ class BufferShuffledIterableDataset(IterableDataset):
         rng.shuffle(buffer)
         for item in buffer:
             yield item
+
+
+class CorruptedImageSafeIterableDataset(IterableDataset):
+    """
+    Odporny wrapper na uszkodzone rekordy obrazów.
+    Jeśli próbka jest uszkodzona, jest pomijana zamiast przerywać cały trening.
+    """
+
+    def __init__(self, iterable_dataset):
+        super().__init__()
+        self.iterable_dataset = iterable_dataset
+
+    def __iter__(self):
+        for item in self.iterable_dataset:
+            try:
+                image = item["image"].convert("RGB")
+                safe_item = dict(item)
+                safe_item["image"] = image
+                yield safe_item
+            except (UnidentifiedImageError, OSError) as e:
+                print(f"Skipping corrupted image: {e}")
+                continue
+            except Exception as e:
+                print(f"Skipping corrupted image: {e}")
+                continue
 
 class CLIPDataStreamer:
     def __init__(
@@ -85,6 +111,9 @@ class CLIPDataStreamer:
                 "✓ Dodano buffer shuffle dla danych treningowych "
                 f"(buffer_size={self.shuffle_buffer_size})"
             )
+
+        dataset = CorruptedImageSafeIterableDataset(dataset)
+        print("✓ Włączono pomijanie uszkodzonych obrazów w strumieniu")
             
         return dataset
 
@@ -92,7 +121,7 @@ class CLIPDataStreamer:
         """
         Funkcja pakująca pojedyncze próbki w gotowy batch tensorów.
         """
-        images = [item["image"].convert("RGB") for item in batch]
+        images = [item["image"] for item in batch]
         
         # Bezpieczna konwersja etykiet (obsługa tekstów i liczb)
         labels = []
