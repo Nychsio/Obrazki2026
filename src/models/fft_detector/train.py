@@ -39,6 +39,18 @@ def rgb_to_fft_two_channel(inputs: torch.Tensor) -> torch.Tensor:
 
     return torch.stack((amplitude, phase), dim=1)
 
+def safe_dataloader(dataloader):
+    """Tarcza MLOps: Generator pomijający uszkodzone paczki danych z Hugging Face"""
+    iterator = iter(dataloader)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            break
+        except Exception as e:
+            print(f"\n⚠️ Tarcza włączona: Pominięto uszkodzony plik! ({e})")
+            continue
+
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Używane urządzenie: {device}")
@@ -69,22 +81,23 @@ def train():
         model.train()
         running_loss = 0.0
         
-        progress_bar = tqdm(train_loader, desc=f"Epoka {epoch+1}/{epochs} [Train]")
+        # Używamy safe_dataloader, żeby zepsute zdjęcia nas nie wysadziły w powietrze
+        progress_bar = tqdm(safe_dataloader(train_loader), desc=f"Epoka {epoch+1}/{epochs} [Train]")
         for batch in progress_bar:
-            inputs = batch['image'].to(device)
-            inputs = rgb_to_fft_two_channel(inputs)
+            inputs_rgb = batch['image'].to(device)
+            inputs_fft = rgb_to_fft_two_channel(inputs_rgb)
             if isinstance(batch['label'], (list, tuple)):
                 labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
             else:
                 labels = batch['label'].to(device).float().unsqueeze(1)
             
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(inputs_rgb, inputs_fft)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             
-            running_loss += loss.item() * inputs.size(0)
+            running_loss += loss.item() * inputs_rgb.size(0)
             progress_bar.set_postfix({'Loss': f"{loss.item():.4f}"})
             
         # Obliczanie średniego loss na podstawie faktycznej liczby próbek
@@ -103,17 +116,17 @@ def train():
         all_preds = []
         
         with torch.no_grad():
-            for batch in tqdm(val_loader, desc=f"Epoka {epoch+1}/{epochs} [Val]", leave=False):
-                inputs = batch['image'].to(device)
-                inputs = rgb_to_fft_two_channel(inputs)
+            for batch in tqdm(safe_dataloader(val_loader), desc=f"Epoka {epoch+1}/{epochs} [Val]", leave=False):
+                inputs_rgb = batch['image'].to(device)
+                inputs_fft = rgb_to_fft_two_channel(inputs_rgb)
                 if isinstance(batch['label'], (list, tuple)):
                     labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
                 else:
                     labels = batch['label'].to(device).float().unsqueeze(1)
                 
-                outputs = model(inputs)
+                outputs = model(inputs_rgb, inputs_fft)
                 loss = criterion(outputs, labels)
-                val_loss += loss.item() * inputs.size(0)
+                val_loss += loss.item() * inputs_rgb.size(0)
                 
                 probs = torch.sigmoid(outputs)
                 preds = (probs > 0.5).float()
