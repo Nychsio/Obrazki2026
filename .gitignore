@@ -1,5 +1,4 @@
 # Dane i Modele
-data/
 models/*.pth
 outputs/
 
