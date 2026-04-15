@@ -89,7 +89,8 @@ def train_pca():
                 
             # Konwersja obrazów do channels_last w locie dla Tensor Cores
             images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
-            labels = labels.float().view(-1, 1).to(device, non_blocking=True)
+            # Wymuszamy konwersję z listy do Tensora przed użyciem .float()
+            labels = torch.as_tensor(labels).float().view(-1, 1).to(device, non_blocking=True)
             
             optimizer.zero_grad()
             
@@ -123,12 +124,21 @@ def train_pca():
                     continue
                     
                 images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
-                labels_gpu = labels.float().view(-1, 1).to(device, non_blocking=True)
+                
+                # Zabezpieczenie przed listą
+                labels_tensor = torch.as_tensor(labels)
+                labels_gpu = labels_tensor.float().view(-1, 1).to(device, non_blocking=True)
                 
                 with autocast():
                     logits = model(images)
                     v_loss = criterion(logits, labels_gpu.to(dtype=logits.dtype))
                     probs = torch.sigmoid(logits)
+                
+                val_loss += v_loss.item()
+                valid_steps_done += 1
+                
+                val_preds.extend(probs.cpu().numpy().flatten().tolist())
+                val_labels_list.extend(labels_tensor.cpu().numpy().flatten().tolist())
                 
                 val_loss += v_loss.item()
                 valid_steps_done += 1
