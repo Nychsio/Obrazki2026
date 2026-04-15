@@ -89,8 +89,10 @@ def train_pca():
                 
             # Konwersja obrazów do channels_last w locie dla Tensor Cores
             images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
-            # Wymuszamy konwersję z listy do Tensora przed użyciem .float()
-            labels = torch.as_tensor(labels).float().view(-1, 1).to(device, non_blocking=True)
+            
+            # Kuloodporna konwersja (zamienia teksty "fake"/"1" na float 1.0, resztę na 0.0)
+            numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
+            labels = torch.tensor(numeric_labels, dtype=torch.float32).view(-1, 1).to(device, non_blocking=True)
             
             optimizer.zero_grad()
             
@@ -125,9 +127,10 @@ def train_pca():
                     
                 images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
                 
-                # Zabezpieczenie przed listą
-                labels_tensor = torch.as_tensor(labels)
-                labels_gpu = labels_tensor.float().view(-1, 1).to(device, non_blocking=True)
+                # Kuloodporna konwersja dla walidacji
+                numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
+                labels_tensor = torch.tensor(numeric_labels, dtype=torch.float32)
+                labels_gpu = labels_tensor.view(-1, 1).to(device, non_blocking=True)
                 
                 with autocast():
                     logits = model(images)
