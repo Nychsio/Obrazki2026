@@ -1,18 +1,19 @@
-import os
 from pathlib import Path
 import torch
-from PIL import Image
-from torchvision import transforms
-
+import base64
+import io
 import cv2
 import numpy as np
-import base64
-from captum.attr import LayerGradCam
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 import torch.nn.functional as F
+from PIL import Image
+from scipy.ndimage import gaussian_filter
+from torchvision import transforms
+from captum.attr import LayerGradCam
 
 # Importy klas modeli
 from src.models.fft_detector.model import FFTResNetDetector
-from src.models.clip.semantic_judge import SemanticJudgeCLIP
 from src.models.gradient_pca.model import GradientCovarianceExtractor
 from src.models.fft_detector.transforms import ComplexFourierTransform
 from src.models.rgb.train import RGBClassifier
@@ -21,6 +22,8 @@ from src.models.noise.model import NoiseBinaryClassifier
 class InferenceEngine:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            torch.cuda.init() # Inicjalizacja kontekstu CUDA dla FastAPI
         
         # Profesjonalne określenie ścieżki do obecnego pliku (engine.py) i folderu models/
         self.base_dir = Path(__file__).resolve().parent
@@ -77,18 +80,21 @@ class InferenceEngine:
             print(f"❌ Brak pliku: {model_path}")
 
     def _load_clip(self):
-        model_path = self.models_dir / "clip_model_best.pth"
-        if model_path.exists():
-            print("⏳ Ładowanie modelu CLIP...")
-            model = SemanticJudgeCLIP(freeze_backbone=True)
-            checkpoint = torch.load(model_path, map_location=self.device)
-            state_dict = checkpoint.get('model_state_dict', checkpoint)
-            model.load_state_dict(state_dict)
-            model.to(self.device).eval()
-            self.models['clip'] = model
-            print("✅ Model CLIP załadowany i gotowy!")
-        else:
-            print(f"❌ Brak pliku: {model_path}")
+        try:
+            print("⏳ Ładowanie modelu CLIP (Zero-Shot)...")
+            from transformers import CLIPProcessor, CLIPModel
+            self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_fast=True)
+
+            # MAGIA JEST TUTAJ: Zmuszamy model do trybu 'eager', żeby oddał nam macierze Atencji!
+            self.clip_model = CLIPModel.from_pretrained(
+                "openai/clip-vit-base-patch32",
+                attn_implementation="eager"
+            ).to(self.device)
+
+            self.models['clip'] = self.clip_model
+            print("✅ Model CLIP załadowany!")
+        except Exception as e:
+            print(f"⚠️ Nie udało się załadować CLIP: {e}")
 
     def _load_pca(self):
         model_path = self.models_dir / "best_gradient_pca_model.pt"
@@ -181,42 +187,82 @@ class InferenceEngine:
             print(f"⚠️ Błąd generowania FFT XAI: {str(e)}")
             return None
 
-    def _generate_clip_xai(self, model, input_tensor, original_image):
-        """Generuje mapę Saliency dla modelu CLIP ViT za pomocą czystych gradientów"""
+    def _generate_clip_xai(self, model, processor, original_image):
+        """Generuje mapę uwagi (Self-Attention) dla Transformera ViT."""
         try:
-            with torch.enable_grad():
-                # Klonujemy tensor i żądamy śledzenia gradientów dla samych pikseli
-                input_tensor = input_tensor.clone().requires_grad_()
-                
-                # Przepuszczamy obraz przez model
-                logits = model(input_tensor)
-                
-                # Obliczamy gradient wyniku (logits) względem oryginalnych pikseli wejściowych
-                logits.backward(torch.ones_like(logits))
-                
-                # Wyciągamy absolutne wartości gradientów (z 3 kanałów RGB robimy 1 mapę przez max)
-                gradients = input_tensor.grad.abs().squeeze().cpu().numpy()
-                saliency = np.max(gradients, axis=0)
-                
-                # Normalizacja
-                if np.max(saliency) > 0:
-                    saliency = saliency / np.max(saliency)
-                    
-                # Kolorowanie (paleta INFERNO dla CLIPa)
-                heatmap = cv2.applyColorMap(np.uint8(255 * saliency), cv2.COLORMAP_INFERNO)
+            with torch.no_grad():
+                inputs = processor(text=["surreal AI generated image"], images=original_image, return_tensors="pt").to(self.device)
+
+                # Odpalamy model z flagą output_attentions=True
+                outputs = model(**inputs, output_attentions=True)
+
+                # Pobieramy macierze uwagi z OSTATNIEJ warstwy modelu wizyjnego
+                vision_attns = outputs.vision_model_output.attentions[-1]
+
+                # Średnia uwaga ze wszystkich 12 "głowic" (heads)
+                avg_attn = vision_attns.mean(dim=1).squeeze()
+
+                # Interesuje nas to, jak główny token [CLS] (indeks 0) patrzy na resztę obrazu (indeks 1+)
+                cls_attn = avg_attn[0, 1:].cpu().numpy()
+
+                # ViT-Base-Patch32 dzieli obraz na siatkę 7x7 (dla obrazu 224x224)
+                grid_size = int(np.sqrt(len(cls_attn)))
+                spatial_attn = cls_attn.reshape(grid_size, grid_size)
+
+                # Normalizacja i powiększenie do rozmiaru oryginalnego obrazu (CUBIC daje gładkie rozmycie)
+                spatial_attn = (spatial_attn - spatial_attn.min()) / (spatial_attn.max() - spatial_attn.min())
+                spatial_attn = cv2.resize(spatial_attn, (original_image.width, original_image.height), interpolation=cv2.INTER_CUBIC)
+
+                # Odcinamy słabe sygnały (tło)
+                spatial_attn[spatial_attn < 0.4] = 0
+
+                heatmap = cv2.applyColorMap(np.uint8(255 * spatial_attn), cv2.COLORMAP_INFERNO)
                 heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-                
-                # Nakładanie na oryginalny obraz
-                orig_resized = original_image.resize(heatmap.shape[1::-1])
-                orig_np = np.array(orig_resized)
-                overlay = cv2.addWeighted(orig_np, 0.5, heatmap, 0.5, 0)
-                
-                # Kodowanie do Base64
+
+                orig_np = np.array(original_image)
+                overlay = cv2.addWeighted(orig_np, 0.5, heatmap, 0.7, 0)
+
                 _, buffer = cv2.imencode('.jpg', cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
                 return base64.b64encode(buffer).decode('utf-8')
-                
+
         except Exception as e:
-            print(f"⚠️ Błąd generowania Saliency CLIP: {str(e)}")
+            print(f"⚠️ Błąd generowania Attention XAI dla CLIP: {str(e)}")
+            return None
+
+    def _generate_pca_vis(self, features):
+        """Generuje elegancki wykres elipsy wariancji dla PCA."""
+        try:
+            var_gx, cov_xy, cov_yx, var_gy = features
+            fig, ax = plt.subplots(figsize=(5, 5))
+
+            # Stylizacja pod mroczny motyw Reacta
+            fig.patch.set_facecolor('#0f172a')
+            ax.set_facecolor('#0f172a')
+            ax.axhline(0, color='#334155', lw=1, ls='--')
+            ax.axvline(0, color='#334155', lw=1, ls='--')
+
+            cov_matrix = np.array([[var_gx, cov_xy], [cov_yx, var_gy]])
+            eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+            angle = np.degrees(np.arctan2(*eigenvectors[:, 1][::-1]))
+
+            # Rysowanie elipsy
+            ell = Ellipse(xy=(0, 0), width=np.sqrt(eigenvalues[1]) * 4, height=np.sqrt(eigenvalues[0]) * 4,
+                          angle=angle, facecolor='#38bdf8', alpha=0.4, edgecolor='#0284c7', lw=2)
+            ax.add_patch(ell)
+
+            max_val = np.sqrt(max(var_gx, var_gy)) * 3
+            if max_val == 0:
+                max_val = 1
+            ax.set_xlim(-max_val, max_val)
+            ax.set_ylim(-max_val, max_val)
+            ax.tick_params(colors='#94a3b8')
+
+            buf = io.BytesIO()
+            plt.savefig(buf, format='jpg', bbox_inches='tight', facecolor=fig.get_facecolor())
+            plt.close(fig)
+            return base64.b64encode(buf.getvalue()).decode('utf-8')
+        except Exception as e:
+            print(f"⚠️ Błąd generowania wykresu PCA: {str(e)}")
             return None
 
     def _generate_gradcam(self, model, input_tensor, original_image):
@@ -295,13 +341,26 @@ class InferenceEngine:
                 if fft_xai: results['fft_vis'] = fft_xai
                 
             if 'clip' in self.models:
-                inputs = self.models['clip'].processor(images=image, return_tensors="pt").to(self.device)
-                
-                logits = self.models['clip'](inputs['pixel_values'])
-                results['clip_prob'] = torch.sigmoid(logits).item()
-                
-                # Dodane XAI CLIP
-                clip_xai = self._generate_clip_xai(self.models['clip'], inputs['pixel_values'], image)
+                # Lepszy Prompt Engineering dla CLIPa
+                labels = [
+                    "a real, natural, authentic photograph without any edits", 
+                    "an impossible, surreal, AI-generated image with logical mistakes and strange objects"
+                ]
+
+                # Przetwarzamy obraz ORAZ tekst
+                inputs = self.clip_processor(text=labels, images=image, return_tensors="pt", padding=True).to(self.device)
+
+                # Pytamy model, do którego zdania obraz pasuje bardziej
+                outputs = self.models['clip'](**inputs)
+                logits_per_image = outputs.logits_per_image
+                probs = logits_per_image.softmax(dim=1)
+
+                # Pobieramy prawdopodobieństwo dla klasy [1] czyli "AI generated"
+                fake_probability = probs[0][1].item()
+                results['clip_prob'] = fake_probability
+
+                # Generujemy nowe, lepsze XAI
+                clip_xai = self._generate_clip_xai(self.models['clip'], self.clip_processor, image)
                 if clip_xai: results['clip_vis'] = clip_xai
                 
             if 'rgb' in self.models:
@@ -317,9 +376,14 @@ class InferenceEngine:
 
             # PRZYWRÓCONY BLOK PCA:
             if 'pca' in self.models:
-                # Transformujemy obraz na czysty tensor
+                import torchvision.transforms as transforms
                 pca_tensor = transforms.ToTensor()(image).unsqueeze(0).to(self.device)
-                pca_features = self.models['pca'](pca_tensor)
-                results['pca_features'] = pca_features.cpu().numpy().tolist()
+                pca_features = self.models['pca'](pca_tensor).cpu().numpy().tolist()[0]
+
+                results['pca_features'] = pca_features
+                results['pca_prob'] = 0.5 # PCA to ekstraktor, nie klasyfikator, dajemy neutralne 50%
+
+                pca_vis = self._generate_pca_vis(pca_features)
+                if pca_vis: results['pca_vis'] = pca_vis
                 
         return results
