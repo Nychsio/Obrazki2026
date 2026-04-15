@@ -44,7 +44,7 @@ def train_pca():
     
     transforms = get_transforms()
     train_dataset = OpenFakeDataset(split="train", transform=transforms)
-    val_dataset = OpenFakeDataset(split="validation", transform=transforms)
+    val_dataset = OpenFakeDataset(split="test", transform=transforms)
     
     # Dodajemy persistent_workers, żeby nie marnować czasu na tworzenie procesów pomiędzy epokami
     train_loader = DataLoader(
