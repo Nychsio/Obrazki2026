@@ -170,11 +170,11 @@ def validate(model, dataloader, criterion, device, epoch, writer, steps_per_val=
 def main():
     # Configuration
     BATCH_SIZE = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
-    NUM_WORKERS = 8 # Increased for better data loading performance
+    NUM_WORKERS = 2 # Reduced for streaming compatibility
     EPOCHS = 12  # Zwiększone dla pełnego treningu
     LEARNING_RATE = 1e-4
-    STEPS_PER_EPOCH = 1000  # Zwiększone dla pełnego treningu
-    VAL_STEPS = 200  # Zwiększone dla pełnego treningu
+    STEPS_PER_EPOCH = 250  # Reduced for streaming (1TB dataset)
+    VAL_STEPS = 50  # Reduced for streaming
     CHECKPOINT_PATH = "checkpoints/best_rgb_model.pt"
     
     # Utworzenie katalogu checkpoints jeśli nie istnieje

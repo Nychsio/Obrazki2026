@@ -138,11 +138,11 @@ def validate(
 
 def main() -> None:
 	batch_size = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
-	num_workers = 8  # Increased for better data loading performance
+	num_workers = 2  # Reduced for streaming compatibility
 	epochs = 12  # Zwiększone dla pełnego treningu
 	learning_rate = 1e-4
-	steps_per_epoch = 1000  # Zwiększone dla pełnego treningu
-	steps_per_val = 200  # Zwiększone dla pełnego treningu
+	steps_per_epoch = 250  # Reduced for streaming (1TB dataset)
+	steps_per_val = 50  # Reduced for streaming
 	checkpoint_path = "checkpoints/best_noise_model.pt"
 
 	# Utworzenie katalogu checkpoints jeśli nie istnieje
