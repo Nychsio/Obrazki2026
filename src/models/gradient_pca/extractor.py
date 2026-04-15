@@ -1,228 +1,81 @@
-"""
-Gradient Covariance Extractor for PCA-based feature extraction.
-
-This module implements gradient covariance extraction from RGB images
-using Sobel filters for gradient computation and covariance matrix
-calculation for PCA dimensionality reduction.
-
-Author: Obrazki Destylacja Project
-Date: 2026-04-13
-"""
-
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Optional
 
+class MultiScaleStructureTensor(nn.Module):
+    def __init__(self, device=None):
+        super(MultiScaleStructureTensor, self).__init__()
+        
+        # Filtry Sobela do liczenia gradientów (Ix, Iy)
+        sobel_x = torch.tensor([[-1., 0., 1.], 
+                                [-2., 0., 2.], 
+                                [-1., 0., 1.]], dtype=torch.float32).view(1, 1, 3, 3)
+        sobel_y = torch.tensor([[-1., -2., -1.], 
+                                [0., 0., 0.], 
+                                [1., 2., 1.]], dtype=torch.float32).view(1, 1, 3, 3)
+        
+        if device:
+            sobel_x, sobel_y = sobel_x.to(device), sobel_y.to(device)
+            
+        self.register_buffer('sobel_x', sobel_x)
+        self.register_buffer('sobel_y', sobel_y)
+        
+        # Pooling dla artefaktów VAE (Stable Diffusion używa kompresji 8x8)
+        self.pool_8 = nn.AvgPool2d(kernel_size=8, stride=8)
+        self.pool_16 = nn.AvgPool2d(kernel_size=16, stride=16)
 
-class GradientCovarianceExtractor:
-    """
-    Extracts gradient covariance features from RGB images.
-    
-    The extractor performs the following steps:
-    1. Converts RGB to luminance using ITU-R BT.709 weights
-    2. Computes horizontal (G_x) and vertical (G_y) gradients using Sobel filters
-    3. Calculates 2x2 covariance matrix for each image in the batch
-    4. Returns flattened covariance matrices
-    
-    Attributes:
-        device (torch.device): Device for tensor operations
-        sobel_x (torch.Tensor): Sobel filter for horizontal gradients
-        sobel_y (torch.Tensor): Sobel filter for vertical gradients
-    """
-    
-    def __init__(self, device: Optional[torch.device] = None):
-        """
-        Initialize the gradient covariance extractor.
-        
-        Args:
-            device: Device for tensor operations. If None, uses CUDA if available.
-        """
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = device
-        
-        # Define Sobel filters for gradient computation
-        # Shape: [1, 1, 3, 3] for batch and channel dimensions
-        self.sobel_x = torch.tensor([
-            [-1, 0, 1],
-            [-2, 0, 2],
-            [-1, 0, 1]
-        ], dtype=torch.float32, device=self.device).view(1, 1, 3, 3)
-        
-        self.sobel_y = torch.tensor([
-            [-1, -2, -1],
-            [0, 0, 0],
-            [1, 2, 1]
-        ], dtype=torch.float32, device=self.device).view(1, 1, 3, 3)
-        
-        # Luminance conversion weights (ITU-R BT.709)
-        self.luminance_weights = torch.tensor(
-            [0.2126, 0.7152, 0.0722], 
-            dtype=torch.float32, 
-            device=self.device
-        ).view(1, 3, 1, 1)
-    
-    def rgb_to_luminance(self, rgb_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Convert RGB tensor to luminance using ITU-R BT.709 weights.
-        
-        Args:
-            rgb_tensor: Input RGB tensor of shape [B, 3, H, W]
-            
-        Returns:
-            Luminance tensor of shape [B, 1, H, W]
-        """
-        # Ensure weights are on the same device as input
-        weights = self.luminance_weights.to(rgb_tensor.device)
-        
-        # Weighted sum across color channels
-        luminance = torch.sum(rgb_tensor * weights, dim=1, keepdim=True)
-        
-        return luminance
-    
-    def compute_gradients(self, luminance_tensor: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Compute horizontal and vertical gradients using Sobel filters.
-        
-        Args:
-            luminance_tensor: Luminance tensor of shape [B, 1, H, W]
-            
-        Returns:
-            Tuple of (G_x, G_y) gradient tensors, each of shape [B, 1, H, W]
-        """
-        # Ensure Sobel filters are on the same device as input
-        sobel_x = self.sobel_x.to(luminance_tensor.device)
-        sobel_y = self.sobel_y.to(luminance_tensor.device)
+    def rgb_to_ycbcr(self, image):
+        """Konwersja RGB do przestrzeni YCbCr (kluczowe dla wyłapywania błędów barw GAN/Diffusion)"""
+        r, g, b = image[:, 0:1, :, :], image[:, 1:2, :, :], image[:, 2:3, :, :]
+        y = 0.299 * r + 0.587 * g + 0.114 * b
+        cb = -0.1687 * r - 0.3313 * g + 0.5 * b + 0.5
+        cr = 0.5 * r - 0.4187 * g - 0.0813 * b + 0.5
+        return y, cb, cr
 
-        # Native batched operation for much better GPU utilization
-        G_x = F.conv2d(luminance_tensor, sobel_x, padding=1)
-        G_y = F.conv2d(luminance_tensor, sobel_y, padding=1)
+    def compute_structure_tensor(self, channel, pool_layer):
+        """Liczy macierz kowariancji gradientów i wyciąga cechy (Eigenvalues, Anisotropy)"""
+        gx = F.conv2d(channel, self.sobel_x, padding=1)
+        gy = F.conv2d(channel, self.sobel_y, padding=1)
+        
+        Ixx = gx * gx
+        Iyy = gy * gy
+        Ixy = gx * gy
+        
+        # Lokalne uśrednianie w oknach (Tensor Struktury)
+        Vxx = pool_layer(Ixx)
+        Vyy = pool_layer(Iyy)
+        Vxy = pool_layer(Ixy)
+        
+        # Wartości własne (Eigenvalues lambda_1, lambda_2)
+        trace = Vxx + Vyy
+        det = (Vxx * Vyy) - (Vxy * Vxy)
+        
+        discriminant = torch.clamp(trace**2 - 4 * det, min=1e-6)
+        sqrt_disc = torch.sqrt(discriminant)
+        
+        lambda_1 = (trace + sqrt_disc) / 2.0
+        lambda_2 = (trace - sqrt_disc) / 2.0
+        
+        # Energia gradientu i Anizotropia (według paperów naukowych)
+        energy = lambda_1 + lambda_2
+        anisotropy = (lambda_1 - lambda_2) / (energy + 1e-5)
+        
+        return torch.cat([lambda_1, lambda_2, energy, anisotropy], dim=1)
 
-        return G_x, G_y
-    
-    def compute_covariance_matrix(self, G_x: torch.Tensor, G_y: torch.Tensor) -> torch.Tensor:
-        """
-        Compute 2x2 covariance matrix for each image in the batch.
+    def forward(self, x):
+        # 1. Rozbicie na YCbCr
+        y, cb, cr = self.rgb_to_ycbcr(x)
         
-        The covariance matrix is defined as:
-            [[var(G_x), cov(G_x, G_y)],
-             [cov(G_x, G_y), var(G_y)]]
+        # 2. Cechy Tensora Struktury dla Luminancji (Y) w skalach 8x8 i 16x16
+        features_y_8 = self.compute_structure_tensor(y, self.pool_8)
+        features_y_16 = self.compute_structure_tensor(y, self.pool_16)
         
-        Args:
-            G_x: Horizontal gradient tensor of shape [B, 1, H, W]
-            G_y: Vertical gradient tensor of shape [B, 1, H, W]
-            
-        Returns:
-            Flattened covariance matrices of shape [B, 4]
-        """
-        batch_size = G_x.shape[0]
+        # Żeby połączyć skale, "rozciągamy" mapę 16x16 do rozmiaru 8x8
+        features_y_16_up = F.interpolate(features_y_16, size=features_y_8.shape[2:], mode='nearest')
         
-        # Flatten spatial dimensions
-        G_x_flat = G_x.view(batch_size, -1)  # [B, H*W]
-        G_y_flat = G_y.view(batch_size, -1)  # [B, H*W]
+        # 3. Zwykłe uśrednione gradienty dla Chrominancji (szukamy szumu barwnego w CbCr)
+        grad_cb = self.pool_8(torch.abs(F.conv2d(cb, self.sobel_x, padding=1)) + torch.abs(F.conv2d(cb, self.sobel_y, padding=1)))
+        grad_cr = self.pool_8(torch.abs(F.conv2d(cr, self.sobel_x, padding=1)) + torch.abs(F.conv2d(cr, self.sobel_y, padding=1)))
         
-        # Compute means
-        mean_G_x = torch.mean(G_x_flat, dim=1, keepdim=True)  # [B, 1]
-        mean_G_y = torch.mean(G_y_flat, dim=1, keepdim=True)  # [B, 1]
-        
-        # Center the gradients
-        G_x_centered = G_x_flat - mean_G_x  # [B, H*W]
-        G_y_centered = G_y_flat - mean_G_y  # [B, H*W]
-        
-        # Compute covariance matrix elements
-        # Using unbiased estimator (N-1 in denominator)
-        n_pixels = G_x_flat.shape[1]
-        
-        # var(G_x) = E[(G_x - μ_x)²]
-        var_G_x = torch.sum(G_x_centered * G_x_centered, dim=1) / (n_pixels - 1)
-        
-        # var(G_y) = E[(G_y - μ_y)²]
-        var_G_y = torch.sum(G_y_centered * G_y_centered, dim=1) / (n_pixels - 1)
-        
-        # cov(G_x, G_y) = E[(G_x - μ_x)(G_y - μ_y)]
-        cov_Gx_Gy = torch.sum(G_x_centered * G_y_centered, dim=1) / (n_pixels - 1)
-        
-        # Construct covariance matrices and flatten
-        # Each matrix is [[var_G_x, cov_Gx_Gy], [cov_Gx_Gy, var_G_y]]
-        covariance_matrices = torch.stack([
-            var_G_x, cov_Gx_Gy, cov_Gx_Gy, var_G_y
-        ], dim=1)  # [B, 4]
-        
-        return covariance_matrices
-    
-    def __call__(self, rgb_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Extract gradient covariance features from RGB tensor.
-        
-        Args:
-            rgb_tensor: Input RGB tensor of shape [B, 3, H, W]
-            
-        Returns:
-            Flattened covariance matrices of shape [B, 4]
-            
-        Raises:
-            ValueError: If input tensor doesn't have expected shape
-        """
-        # Validate input shape
-        if rgb_tensor.dim() != 4:
-            raise ValueError(f"Expected 4D tensor [B, 3, H, W], got {rgb_tensor.dim()}D")
-        
-        if rgb_tensor.shape[1] != 3:
-            raise ValueError(f"Expected 3 channels (RGB), got {rgb_tensor.shape[1]} channels")
-        
-        # Convert to luminance
-        luminance = self.rgb_to_luminance(rgb_tensor)
-        
-        # Compute gradients
-        G_x, G_y = self.compute_gradients(luminance)
-        
-        # Compute covariance matrices
-        covariance_matrices = self.compute_covariance_matrix(G_x, G_y)
-        
-        return covariance_matrices
-    
-    def extract_with_intermediates(self, rgb_tensor: torch.Tensor) -> dict:
-        """
-        Extract gradient covariance features with intermediate results.
-        
-        Args:
-            rgb_tensor: Input RGB tensor of shape [B, 3, H, W]
-            
-        Returns:
-            Dictionary containing:
-                - 'luminance': Luminance tensor [B, 1, H, W]
-                - 'G_x': Horizontal gradients [B, 1, H, W]
-                - 'G_y': Vertical gradients [B, 1, H, W]
-                - 'covariance': Flattened covariance matrices [B, 4]
-        """
-        # Convert to luminance
-        luminance = self.rgb_to_luminance(rgb_tensor)
-        
-        # Compute gradients
-        G_x, G_y = self.compute_gradients(luminance)
-        
-        # Compute covariance matrices
-        covariance = self.compute_covariance_matrix(G_x, G_y)
-        
-        return {
-            'luminance': luminance,
-            'G_x': G_x,
-            'G_y': G_y,
-            'covariance': covariance
-        }
-
-
-# Convenience function for quick extraction
-def extract_gradient_covariance(rgb_tensor: torch.Tensor, device: Optional[torch.device] = None) -> torch.Tensor:
-    """
-    Convenience function for extracting gradient covariance features.
-    
-    Args:
-        rgb_tensor: Input RGB tensor of shape [B, 3, H, W]
-        device: Device for computation
-        
-    Returns:
-        Flattened covariance matrices of shape [B, 4]
-    """
-    extractor = GradientCovarianceExtractor(device)
-    return extractor(rgb_tensor)
+        # Złączenie w potężny 10-kanałowy tensor: [Lambda1_8, Lambda2_8, Energy_8, Aniso_8, Lambda1_16, Lambda2_16, Energy_16, Aniso_16, Grad_Cb, Grad_Cr]
+        return torch.cat([features_y_8, features_y_16_up, grad_cb, grad_cr], dim=1)
