@@ -1,0 +1,42 @@
+[
+  {
+    "model": "noise",
+    "checkpoint": "best_noise_model.pt",
+    "precision": 0.6285714285714286,
+    "recall": 0.7333333333333333,
+    "f1": 0.676923076923077,
+    "samples": 64
+  },
+  {
+    "model": "rgb",
+    "checkpoint": "best_rgb_model.pt",
+    "precision": 0.7837837837837838,
+    "recall": 0.9666666666666667,
+    "f1": 0.8656716417910447,
+    "samples": 64
+  },
+  {
+    "model": "clip",
+    "checkpoint": "clip_model_best.pth",
+    "precision": 0.9,
+    "recall": 0.9,
+    "f1": 0.9,
+    "samples": 64
+  },
+  {
+    "model": "fft",
+    "checkpoint": "fft_detector_best.pth",
+    "precision": 0.46875,
+    "recall": 1.0,
+    "f1": 0.6382978723404256,
+    "samples": 64
+  },
+  {
+    "model": "gradient_pca",
+    "checkpoint": "best_gradient_pca_model.pt",
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "samples": 64
+  }
+]
