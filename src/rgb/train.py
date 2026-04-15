@@ -34,6 +34,17 @@ class RGBClassifier(nn.Module):
         logits = self.classifier(features)
         return logits
 
+def safe_dataloader(dataloader):
+    iterator = iter(dataloader)
+    while True:
+        try:
+            yield next(iterator)
+        except StopIteration:
+            break
+        except Exception as e:
+            print(f"Błąd ładowania paczki danych, pomijanie: {e}")
+            continue
+
 def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epoch, writer, steps_per_epoch=1000):
     model.train()
     running_loss = 0.0
@@ -44,7 +55,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
     # We use enumerate just to count steps, but relies on dataloader to stop or we break manually
     
     step = 0
-    for i, (inputs, labels) in enumerate(dataloader):
+    for i, (inputs, labels) in enumerate(safe_dataloader(dataloader)):
         if step >= steps_per_epoch:
             break
             
@@ -92,7 +103,7 @@ def validate(model, dataloader, criterion, device, epoch, writer, steps_per_val=
     
     with torch.no_grad():
         step = 0
-        for i, (inputs, labels) in enumerate(dataloader):
+        for i, (inputs, labels) in enumerate(safe_dataloader(dataloader)):
             if step >= steps_per_val:
                 break
                 

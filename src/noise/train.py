@@ -29,6 +29,18 @@ def _labels_to_tensor(labels, device: torch.device) -> torch.Tensor:
 	return labels_tensor.to(device=device, dtype=torch.float32).view(-1, 1)
 
 
+def safe_dataloader(dataloader):
+	iterator = iter(dataloader)
+	while True:
+		try:
+			yield next(iterator)
+		except StopIteration:
+			break
+		except Exception as e:
+			print(f"Błąd ładowania paczki danych, pomijanie: {e}")
+			continue
+
+
 def train_one_epoch(
 	model: nn.Module,
 	dataloader: DataLoader,
@@ -44,7 +56,7 @@ def train_one_epoch(
 	step_count = 0
 
 	pbar = tqdm(total=steps_per_epoch, desc="Training", leave=False)
-	for images, labels in dataloader:
+	for images, labels in safe_dataloader(dataloader):
 		if step_count >= steps_per_epoch:
 			break
 
@@ -86,7 +98,7 @@ def validate(
 	all_targets = []
 
 	pbar = tqdm(total=steps_per_val, desc="Validation", leave=False)
-	for images, labels in dataloader:
+	for images, labels in safe_dataloader(dataloader):
 		if step_count >= steps_per_val:
 			break
 
