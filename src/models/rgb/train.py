@@ -9,8 +9,8 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-from src.rgb.data import OpenFakeDataset, get_transforms
-from src.rgb.feature_extractor import create_feature_extractor
+from src.models.rgb.data import OpenFakeDataset, get_transforms
+from src.models.rgb.feature_extractor import create_feature_extractor
 
 class RGBClassifier(nn.Module):
     """

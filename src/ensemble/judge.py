@@ -9,8 +9,8 @@ import warnings
 
 # Importy modeli bazowych
 try:
-    from src.noise.model import NoiseBinaryClassifier
-    from src.rgb.train import RGBClassifier
+    from src.models.noise.model import NoiseBinaryClassifier
+    from src.models.rgb.train import RGBClassifier
     from src.models.clip.semantic_judge import SemanticJudgeCLIP
     from src.models.fft_detector.model import FFTResNetDetector
     from src.models.gradient_pca.model import GradientPCADetector

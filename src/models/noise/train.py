@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from src.noise.model import NoiseBinaryClassifier
-from src.rgb.data import OpenFakeDataset, get_transforms
+from src.models.noise.model import NoiseBinaryClassifier
+from src.models.rgb.data import OpenFakeDataset, get_transforms
 
 
 def _labels_to_tensor(labels, device: torch.device) -> torch.Tensor:

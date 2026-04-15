@@ -12,12 +12,12 @@ Projekt implementuje system detekcji obrazów wygenerowanych przez AI (deepfake)
 ## Kluczowe Komponenty
 
 ### Modele
-1. **Noise Binary Classifier** (`src/noise/`)
+1. **Noise Binary Classifier** (`src/models/noise/`)
    - Architektura: CNN na szumach resztkowych
    - Filtr: High-pass Gaussian filter
    - Zapisany model: `best_noise_model.pt`
 
-2. **RGB Classifier** (`src/rgb/`)
+2. **RGB Classifier** (`src/models/rgb/`)
    - Backbone: EfficientNet-B0 (timm)
    - Głowa klasyfikacyjna: Linear(1280→1)
    - Zapisany model: `best_rgb_model.pt`
@@ -87,10 +87,10 @@ Projekt implementuje system detekcji obrazów wygenerowanych przez AI (deepfake)
 ### Uruchomienie treningu
 ```bash
 # Model noise
-python src/noise/train.py
+python src/models/noise/train.py
 
 # Model RGB  
-python src/rgb/train.py
+python src/models/rgb/train.py
 
 # Model FFT
 python src/models/fft_detector/train.py
@@ -105,13 +105,13 @@ python src/models/gradient_pca/simple_test.py
 ### Inferencja
 ```bash
 # RGB model
-python src/rgb/inference.py test_image.jpg --model_path best_rgb_model.pt
+python src/models/rgb/inference.py test_image.jpg --model_path best_rgb_model.pt
 
 # FFT model
 python src/models/fft_detector/predict_single.py test_image.jpg
 
 # XAI (Grad-CAM)
-python src/rgb/explain.py
+python src/models/rgb/explain.py
 
 # Gradient PCA features
 python -c "from src.models.gradient_pca import GradientCovarianceExtractor; import torch; extractor = GradientCovarianceExtractor(); img = torch.randn(1, 3, 224, 224); features = extractor(img); print(f'Features shape: {features.shape}')"
@@ -134,5 +134,5 @@ pip install -r requirements.txt
 
 ---
 
-*Memory Bank zaktualizowany: 2026-04-13*  
+*Memory Bank zaktualizowany: 2026-04-15*  
 *Cel: Centralne źródło wiedzy o projekcie dla nowych developerów i utrzymanie kontekstu*
