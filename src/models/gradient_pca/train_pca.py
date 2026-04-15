@@ -46,7 +46,7 @@ def train_pca():
     train_dataset = OpenFakeDataset(split="train", transform=transforms)
     val_dataset = OpenFakeDataset(split="test", transform=transforms)
     
-    # Dodajemy persistent_workers, żeby nie marnować czasu na tworzenie procesów pomiędzy epokami
+    # === TRENING: Zostawiamy pełną moc (workers) ===
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
@@ -54,11 +54,13 @@ def train_pca():
         pin_memory=True,
         persistent_workers=(workers > 0)
     )
+    
+    # === WALIDACJA: Twarde ZERO (1 pliku nie da się podzielić) ===
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
-        num_workers=0,  # Zbiór testowy to 1 plik, więc wymuszamy 1 proces!
-        pin_memory=True
+        num_workers=0,      # <--- TO JEST KLUCZOWE! MUSI BYĆ 0.
+        pin_memory=True     # <--- Zwróć uwagę, że usunąłem stąd persistent_workers
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
@@ -95,7 +97,7 @@ def train_pca():
             
             optimizer.zero_grad()
             
-            with autocast():
+            with torch.amp.autocast('cuda'):
                 logits = model(images)
                 loss = criterion(logits, labels.to(dtype=logits.dtype))
                 
@@ -131,7 +133,7 @@ def train_pca():
                 labels_tensor = torch.tensor(numeric_labels, dtype=torch.float32)
                 labels_gpu = labels_tensor.view(-1, 1).to(device, non_blocking=True)
                 
-                with autocast():
+                with torch.amp.autocast('cuda'):
                     logits = model(images)
                     v_loss = criterion(logits, labels_gpu.to(dtype=logits.dtype))
                     probs = torch.sigmoid(logits)
