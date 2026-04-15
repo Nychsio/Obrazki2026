@@ -57,9 +57,8 @@ def train_pca():
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
-        num_workers=workers, 
-        pin_memory=True,
-        persistent_workers=(workers > 0)
+        num_workers=0,  # Zbiór testowy to 1 plik, więc wymuszamy 1 proces!
+        pin_memory=True
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
