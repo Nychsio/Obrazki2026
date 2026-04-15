@@ -147,7 +147,7 @@ def train_pca():
                 valid_steps_done += 1
                 
                 val_preds.extend(probs.cpu().numpy().flatten().tolist())
-                val_labels_list.extend(labels.numpy().flatten().tolist())
+                val_labels_list.extend(labels_tensor.cpu().numpy().flatten().tolist())
                 
         avg_val_loss = val_loss / max(1, valid_steps_done)
         val_auc = roc_auc_score(val_labels_list, val_preds)
