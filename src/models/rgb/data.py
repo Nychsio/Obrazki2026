@@ -1,60 +1,55 @@
 import torch
-from torch.utils.data import IterableDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset
 import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-class OpenFakeDataset(IterableDataset):
+class OpenFakeDataset(Dataset):
     """
-    Custom IterableDataset for streaming the ComplexDataLab/OpenFake dataset.
-    Supports multi-worker DataLoaders by sharding the stream.
+    Custom Dataset for loading the ComplexDataLab/OpenFake dataset.
+    Loads full dataset into memory (no streaming).
     """
     def __init__(self, split="train", transform=None):
         self.split = split
         self.transform = transform
         self.dataset_id = "ComplexDataLab/OpenFake"
-
-    def __iter__(self):
-        # Determine worker information for proper sharding
-        worker_info = torch.utils.data.get_worker_info()
         
-        # Load the dataset in streaming mode
-        # Note: If streaming=True, load_dataset returns an IterableDataset
-        hf_dataset = load_dataset(self.dataset_id, split=self.split, streaming=True)
-        
-        # If running with multiple workers, shard the dataset to avoid duplicates
-        if worker_info is not None:
-            # Calculate total number of workers across all nodes (usually 1 node, so num_workers)
-            # Use strict sharding based on worker ID
-            # In streaming mode, this splits the underlying file shards or examples
-            hf_dataset = hf_dataset.shard(
-                num_shards=worker_info.num_workers,
-                index=worker_info.id
-            )
+        # Load the dataset without streaming (full dataset in memory)
+        print(f"Loading OpenFake dataset ({split})...")
+        self.hf_dataset = load_dataset(self.dataset_id, split=self.split)
+        print(f"Dataset loaded: {len(self.hf_dataset)} samples")
 
-        for sample in hf_dataset:
-            # Detailed safety check on image key
-            if "image" not in sample:
-                continue
-                
-            image = sample["image"]
-            # Convert PIL Image to RGB NumPy array
-            image_np = np.array(image.convert("RGB"))
+    def __len__(self):
+        return len(self.hf_dataset)
+
+    def __getitem__(self, idx):
+        sample = self.hf_dataset[idx]
+        
+        # Detailed safety check on image key
+        if "image" not in sample:
+            # Return a dummy sample if image key is missing
+            dummy_image = torch.zeros(3, 224, 224)
+            dummy_label = -1
+            return dummy_image, dummy_label
             
-            # Extract label, assume 'label' key exists
-            label = sample.get("label", -1)
+        image = sample["image"]
+        # Convert PIL Image to RGB NumPy array
+        image_np = np.array(image.convert("RGB"))
+        
+        # Extract label, assume 'label' key exists
+        label = sample.get("label", -1)
 
-            if self.transform:
-                # Apply Albumentations transform
-                # Albumentations expects 'image' keyword argument
-                augmented = self.transform(image=image_np)
-                image_tensor = augmented["image"]
-            else:
-                # Fallback: simple conversion if no transform provided
-                image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
+        if self.transform:
+            # Apply Albumentations transform
+            # Albumentations expects 'image' keyword argument
+            augmented = self.transform(image=image_np)
+            image_tensor = augmented["image"]
+        else:
+            # Fallback: simple conversion if no transform provided
+            image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
 
-            yield image_tensor, label
+        return image_tensor, label
 
 def get_transforms():
     """

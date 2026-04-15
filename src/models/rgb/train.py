@@ -170,7 +170,7 @@ def validate(model, dataloader, criterion, device, epoch, writer, steps_per_val=
 def main():
     # Configuration
     BATCH_SIZE = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
-    NUM_WORKERS = 0 # Adjusted to 0 for Windows compatibility
+    NUM_WORKERS = 8 # Increased for better data loading performance
     EPOCHS = 12  # Zwiększone dla pełnego treningu
     LEARNING_RATE = 1e-4
     STEPS_PER_EPOCH = 1000  # Zwiększone dla pełnego treningu
@@ -198,8 +198,8 @@ def main():
         print(f"Warning: split not found ({e}), using 'train' for validation (debug mode)")
         val_dataset = OpenFakeDataset(split="train", transform=transforms)
 
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS, pin_memory=True)
 
     # Model Setup
     model = RGBClassifier().to(device)

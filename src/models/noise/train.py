@@ -138,7 +138,7 @@ def validate(
 
 def main() -> None:
 	batch_size = 64  # Zwiększone dla RTX 3090 Ti (24GB VRAM)
-	num_workers = 0  # Keep 0 for stable Windows behavior.
+	num_workers = 8  # Increased for better data loading performance
 	epochs = 12  # Zwiększone dla pełnego treningu
 	learning_rate = 1e-4
 	steps_per_epoch = 1000  # Zwiększone dla pełnego treningu
@@ -159,8 +159,8 @@ def main() -> None:
 	train_dataset = OpenFakeDataset(split="train", transform=transforms)
 	val_dataset = OpenFakeDataset(split="test", transform=transforms)
 
-	train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-	val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
+	train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+	val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
 
 	model = NoiseBinaryClassifier().to(device)
 	criterion = nn.BCEWithLogitsLoss()
