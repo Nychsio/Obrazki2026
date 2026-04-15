@@ -17,11 +17,11 @@ if project_root not in sys.path:
 
 # Try imports
 try:
-    from src.rgb.train import RGBClassifier
+    from src.models.rgb.train import RGBClassifier
 except ImportError:
     # Fallback for when running as a script where src is not a package
     # This might happen if project structure is slightly different or sys.path isn't working as expected
-    print("Error: Could not import RGBClassifier. Ensure you are running from the project root using 'python -m src.rgb.inference' or that PYTHONPATH is set.")
+    print("Error: Could not import RGBClassifier. Ensure you are running from the project root using 'python -m src.models.rgb.inference' or that PYTHONPATH is set.")
     sys.exit(1)
 
 def get_inference_transforms():
