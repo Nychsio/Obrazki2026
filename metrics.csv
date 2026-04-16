@@ -1,0 +1,6 @@
+model,checkpoint,precision,recall,f1,samples
+noise,best_noise_model.pt,0.6285714285714286,0.7333333333333333,0.676923076923077,64
+rgb,best_rgb_model.pt,0.7837837837837838,0.9666666666666667,0.8656716417910447,64
+clip,clip_model_best.pth,0.9,0.9,0.9,64
+fft,fft_detector_best.pth,0.46875,1.0,0.6382978723404256,64
+gradient_pca,best_gradient_pca_model.pt,0.0,0.0,0.0,64
