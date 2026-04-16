@@ -61,7 +61,7 @@ export default function App() {
 
     try {
       // PAMIĘTAJ: Tu potem podmienimy localhost na adres z RunPoda!
-      const response = await axios.post('http://localhost:8000/api/v1/analyze', formData, {
+      const response = await axios.post('https://5ysetxr0yb4um6-8000.proxy.runpod.net/api/v1/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setPredictions(response.data.predictions);
