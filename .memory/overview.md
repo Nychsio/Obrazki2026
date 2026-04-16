@@ -73,13 +73,24 @@ Projekt implementuje system detekcji obrazów wygenerowanych przez AI (deepfake)
 
 ```
 .memory/
-├── overview.md              # Ten plik
-├── models/                  # Dokumentacja modeli
+├── overview.md              # Ten plik - główna dokumentacja projektu
+├── frontend.md              # Dokumentacja frontendu React
+├── deployment.md            # Dokumentacja backendu FastAPI i inference
+├── quickstart.md            # Szybki start dla nowych developerów
+├── models/                  # Dokumentacja poszczególnych modeli ML
+│   ├── clip_model.md        # Model CLIP - analiza semantyczna
+│   ├── fft_model.md         # Model FFT - analiza częstotliwościowa
+│   ├── rgb_model.md         # Model RGB - analiza pikseli
+│   ├── noise_model.md       # Model Noise - analiza szumów
+│   └── gradient_pca_model.md # Model PCA - analiza gradientów
 ├── data/                    # Dokumentacja danych
-├── training/                # Procesy treningowe
-├── evaluation/              # Metryki i ewaluacja
-├── deployment/              # Deployment i infrastruktura
+│   └── dataset.md           # Dataset OpenFake i preprocessing
+├── training/                # Procesy treningowe (w budowie)
+├── evaluation/              # Metryki i ewaluacja (w budowie)
+├── deployment/              # Pliki źródłowe deployment (kopie)
+│   └── app/                 # Kopie plików FastAPI dla referencji
 └── issues/                  # Zidentyfikowane problemy
+    └── known_issues.md      # Lista znanych problemów i TODO
 ```
 
 ## Szybkie Odwołania
@@ -134,5 +145,5 @@ pip install -r requirements.txt
 
 ---
 
-*Memory Bank zaktualizowany: 2026-04-15*  
+*Memory Bank zaktualizowany: 2026-04-16*  
 *Cel: Centralne źródło wiedzy o projekcie dla nowych developerów i utrzymanie kontekstu*

@@ -3,7 +3,6 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { ShieldCheck, UploadCloud, BrainCircuit, Waves, ScanSearch, FileWarning, Zap, Activity, Cpu, Clock } from 'lucide-react';
 
-// Baza wiedzy i statystyki wyświetlane po kliknięciu
 const MODEL_DETAILS = {
   rgb: { 
     name: "Model RGB", icon: ScanSearch,
@@ -61,12 +60,12 @@ export default function App() {
     formData.append('file', fileObj);
 
     try {
+      // PAMIĘTAJ: Tu potem podmienimy localhost na adres z RunPoda!
       const response = await axios.post('http://localhost:8000/api/v1/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setPredictions(response.data.predictions);
       
-      // Ustaw pierwsze dostępne XAI
       const availableModels = models.filter(m => 
         response.data.predictions[`${m}_vis`] || 
         response.data.predictions[`${m}_gradcam`] || 
@@ -75,7 +74,7 @@ export default function App() {
       if (availableModels.length > 0) setActiveXAI(availableModels[0]);
 
     } catch (err) {
-      setError('Błąd połączenia z serwerem. Upewnij się, że FastAPI działa.');
+      setError('Błąd połączenia z serwerem AI.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -83,45 +82,45 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-main text-text-main p-3 sm:p-6 md:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-bg-main text-text-main p-3 sm:p-6 lg:p-12 font-sans">
+      <div className="max-w-[1600px] mx-auto space-y-8 lg:space-y-12">
         
-        {/* NAGŁÓWEK */}
-        <header className="flex flex-col md:flex-row items-center text-center md:text-left gap-3 md:gap-5 pb-6 md:pb-8 border-b border-accent">
-          <ShieldCheck className="w-10 h-10 md:w-12 md:h-12 text-text-main" strokeWidth={1} />
-          <div className="space-y-1">
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tighter text-text-main uppercase">
+        {/* NAGŁÓWEK - GIGANTYCZNY NA PC */}
+        <header className="flex flex-col md:flex-row items-center text-center md:text-left gap-3 lg:gap-8 pb-6 lg:pb-10 border-b border-accent lg:border-b-2 lg:border-gray-500">
+          <ShieldCheck className="w-10 h-10 lg:w-20 lg:h-20 text-text-main" strokeWidth={1.5} />
+          <div className="space-y-2">
+            <h1 className="text-3xl lg:text-7xl font-black tracking-tighter text-text-main uppercase">
               AUTHENTISCAN
             </h1>
-            <p className="text-sm md:text-lg text-highlight tracking-wide uppercase font-light">
+            <p className="text-sm lg:text-2xl text-highlight lg:text-gray-300 tracking-widest uppercase font-bold">
               PIĘĆ MODELI. JEDNA PRAWDA.
             </p>
           </div>
         </header>
 
-        {/* BŁĄD */}
         {error && (
-          <div className="border border-red-900/50 bg-red-950/20 text-red-500 p-4 text-sm font-bold uppercase tracking-wider text-center">
+          <div className="border-2 border-red-500 bg-red-950/40 text-red-400 p-6 text-lg lg:text-2xl font-black uppercase tracking-widest text-center">
             {error}
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 lg:gap-10">
           
           {/* KOLUMNA LEWA: Wgraj obraz */}
-          <div className="xl:col-span-1 space-y-6">
-            <div className="border border-accent p-6 bg-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.05)] sticky top-6">
-              <h2 className="text-lg font-bold mb-6 text-text-main uppercase tracking-tight flex items-center gap-3">
-                <UploadCloud className="w-5 h-5 text-highlight" /> Wgraj obraz
+          <div className="xl:col-span-1 space-y-6 lg:space-y-10">
+            {/* Pogrubione ramki na PC */}
+            <div className="border border-accent lg:border-2 lg:border-gray-600 p-6 lg:p-8 bg-black">
+              <h2 className="text-lg lg:text-2xl font-black mb-6 lg:mb-8 text-text-main uppercase tracking-tight flex items-center gap-3">
+                <UploadCloud className="w-5 h-5 lg:w-8 lg:h-8 text-text-main" /> Wgraj obraz
               </h2>
               
-              <label className="aspect-square border-2 border-accent border-dashed flex flex-col items-center justify-center cursor-pointer hover:border-highlight hover:bg-highlight/5 transition-colors group relative overflow-hidden">
+              <label className="aspect-square border-2 border-accent lg:border-4 lg:border-gray-500 border-dashed flex flex-col items-center justify-center cursor-pointer hover:border-text-main transition-colors group relative overflow-hidden">
                 {file ? (
                   <img src={file} alt="Preview" className="w-full h-full object-cover p-1 opacity-80 group-hover:opacity-100 transition-opacity" />
                 ) : (
-                  <div className="text-center p-4 space-y-3">
-                    <ScanSearch className="w-10 h-10 mx-auto text-accent group-hover:text-text-main transition-colors" strokeWidth={1}/>
-                    <p className="text-highlight text-xs font-bold uppercase group-hover:text-text-main">Kliknij / Upuść plik</p>
+                  <div className="text-center p-4 space-y-4">
+                    <ScanSearch className="w-10 h-10 lg:w-16 lg:h-16 mx-auto text-highlight lg:text-gray-400 group-hover:text-text-main transition-colors" strokeWidth={1.5}/>
+                    <p className="text-highlight lg:text-gray-200 text-xs lg:text-lg font-black uppercase tracking-widest">Kliknij / Upuść plik</p>
                   </div>
                 )}
                 <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
@@ -130,54 +129,55 @@ export default function App() {
               <button 
                 onClick={handleAnalyze}
                 disabled={loading || !file}
-                className="w-full mt-6 bg-transparent border border-text-main text-text-main hover:bg-text-main hover:text-bg-main disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-main font-bold py-3 text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                className="w-full mt-6 lg:mt-10 bg-text-main border-2 border-text-main text-bg-main hover:bg-transparent hover:text-text-main disabled:opacity-30 disabled:hover:bg-text-main disabled:hover:text-bg-main font-black py-4 lg:py-6 text-sm lg:text-xl uppercase tracking-widest transition-all flex items-center justify-center gap-3"
               >
-                {loading ? <Activity className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                {loading ? <Activity className="w-4 h-4 lg:w-6 lg:h-6 animate-spin" /> : <Zap className="w-4 h-4 lg:w-6 lg:h-6" />}
                 {loading ? 'ANALIZA TRWA...' : 'URUCHOM ENSEMBLE'}
               </button>
             </div>
           </div>
 
-          {/* KOLUMNA PRAWA: Wyniki, LLM i XAI */}
-          <div className="xl:col-span-3 space-y-6">
+          {/* KOLUMNA PRAWA */}
+          <div className="xl:col-span-3 space-y-6 lg:space-y-10">
             
             {!predictions ? (
-              <div className="h-full min-h-[400px] border border-accent border-dashed flex flex-col items-center justify-center text-highlight p-6 text-center">
-                <ShieldCheck className="w-16 h-16 mb-4 opacity-20" strokeWidth={1} />
-                <p className="uppercase tracking-widest text-sm">Oczekuje na wprowadzenie danych do systemu...</p>
+              <div className="h-full min-h-[400px] border border-accent lg:border-4 lg:border-gray-700 border-dashed flex flex-col items-center justify-center text-highlight lg:text-gray-400 p-6 text-center">
+                <ShieldCheck className="w-16 h-16 lg:w-24 lg:h-24 mb-6 opacity-40" strokeWidth={1} />
+                <p className="uppercase tracking-widest text-sm lg:text-2xl font-bold">Oczekuje na wprowadzenie danych do systemu...</p>
               </div>
             ) : (
-              <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="space-y-6 lg:space-y-10 animate-in fade-in duration-500">
                 
-                {/* WERDYKT DEEPSEEK */}
+                {/* WERDYKT DEEPSEEK - WERSJA PROJEKTOR */}
                 {predictions.llm_verdict && (
-                  <div className="border border-accent p-6 bg-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.05)] relative overflow-hidden">
-                    <div className="absolute left-0 top-0 w-1 h-full bg-text-main"></div>
-                    <h2 className="text-lg font-bold mb-4 text-text-main uppercase tracking-tight flex items-center gap-3">
-                      <BrainCircuit className="w-5 h-5 text-highlight" /> Werdykt AI (DeepSeek)
+                  <div className="border border-accent lg:border-2 lg:border-gray-600 p-6 lg:p-8 bg-black relative overflow-hidden">
+                    <div className="absolute left-0 top-0 w-1 lg:w-2 h-full bg-text-main"></div>
+                    <h2 className="text-lg lg:text-2xl font-black mb-4 lg:mb-6 text-text-main uppercase tracking-tight flex items-center gap-3">
+                      <BrainCircuit className="w-5 h-5 lg:w-8 lg:h-8 text-highlight lg:text-gray-300" /> Werdykt AI (DeepSeek)
                     </h2>
-                    <div className="text-highlight leading-relaxed text-sm space-y-2 [&>p>strong]:text-text-main [&>p>strong]:font-bold [&>ul]:list-disc [&>ul]:ml-5">
+                    <div className="text-highlight lg:text-gray-200 leading-relaxed text-sm lg:text-xl space-y-4 [&>p>strong]:text-text-main [&>p>strong]:font-black [&>ul]:list-disc [&>ul]:ml-6 lg:[&>ul]:ml-8">
                       <ReactMarkdown>{predictions.llm_verdict}</ReactMarkdown>
                     </div>
                   </div>
                 )}
 
-                {/* SIATKA WYNIKÓW MODELI */}
-                <div className="border border-accent p-6 bg-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.05)]">
-                  <h2 className="text-lg font-bold mb-6 text-text-main uppercase tracking-tight flex items-center gap-3">
-                    <Activity className="w-5 h-5 text-highlight" /> Analiza Komponentowa
+                {/* SIATKA WYNIKÓW MODELI - GIGANTYCZNE PROCENTY */}
+                <div className="border border-accent lg:border-2 lg:border-gray-600 p-6 lg:p-8 bg-black">
+                  <h2 className="text-lg lg:text-2xl font-black mb-6 lg:mb-8 text-text-main uppercase tracking-tight flex items-center gap-3">
+                    <Activity className="w-5 h-5 lg:w-8 lg:h-8 text-text-main" /> Analiza Komponentowa
                   </h2>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3 lg:gap-6">
                     {models.map((model) => {
                       if (predictions[`${model}_prob`] === undefined) return null;
                       const Icon = MODEL_DETAILS[model].icon;
                       const prob = predictions[`${model}_prob`] * 100;
                       const isFake = prob > 50;
                       return (
-                        <div key={model} className="border border-accent p-4 text-center space-y-2 bg-bg-main">
-                          <Icon className="w-6 h-6 mx-auto text-highlight" strokeWidth={1} />
-                          <p className="text-[10px] text-highlight uppercase font-bold tracking-widest">{model}</p>
-                          <p className={`text-xl sm:text-2xl font-extrabold tracking-tighter ${isFake ? 'text-red-500' : 'text-emerald-400'}`}>
+                        <div key={model} className="border border-accent lg:border-2 lg:border-gray-500 p-4 lg:p-6 text-center space-y-3 bg-bg-main">
+                          <Icon className="w-6 h-6 lg:w-10 lg:h-10 mx-auto text-highlight lg:text-gray-300" strokeWidth={1.5} />
+                          <p className="text-[10px] lg:text-sm text-highlight lg:text-gray-200 uppercase font-black tracking-widest">{model}</p>
+                          {/* TUTAJ DZIEJE SIĘ MAGIA PROJEKTORA - xl:text-6xl */}
+                          <p className={`text-xl sm:text-2xl lg:text-5xl xl:text-6xl font-black tracking-tighter ${isFake ? 'text-red-500' : 'text-emerald-400'}`}>
                             {prob.toFixed(1)}%
                           </p>
                         </div>
@@ -187,19 +187,19 @@ export default function App() {
                 </div>
 
                 {/* XAI I DETALE */}
-                <div className="border border-accent p-6 bg-black shadow-[0_0_60px_-15px_rgba(255,255,255,0.05)]">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                    <h2 className="text-lg font-bold text-text-main uppercase tracking-tight flex items-center gap-3">
-                      <ScanSearch className="w-5 h-5 text-highlight" /> Analiza XAI
+                <div className="border border-accent lg:border-2 lg:border-gray-600 p-6 lg:p-8 bg-black">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 lg:mb-10">
+                    <h2 className="text-lg lg:text-2xl font-black text-text-main uppercase tracking-tight flex items-center gap-3">
+                      <ScanSearch className="w-5 h-5 lg:w-8 lg:h-8 text-text-main" /> Analiza XAI
                     </h2>
-                    <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto">
+                    <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 lg:gap-4 w-full sm:w-auto">
                       {models.map(model => {
                         if (predictions[`${model}_prob`] === undefined) return null;
                         return (
                           <button 
                             key={model}
                             onClick={() => setActiveXAI(model)}
-                            className={`px-3 py-2 sm:py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border ${activeXAI === model ? 'bg-text-main text-bg-main border-text-main' : 'bg-bg-main text-highlight border-accent hover:text-text-main'}`}
+                            className={`px-3 py-2 lg:px-6 lg:py-3 text-[10px] sm:text-xs lg:text-lg font-black uppercase tracking-widest transition-colors border-2 ${activeXAI === model ? 'bg-text-main text-bg-main border-text-main' : 'bg-bg-main text-highlight lg:text-gray-300 border-accent lg:border-gray-500 hover:text-text-main'}`}
                           >
                             {model}
                           </button>
@@ -208,48 +208,60 @@ export default function App() {
                     </div>
                   </div>
                   
-                  {/* Podział na obraz i tekst */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-12">
                     {/* OBRAZ XAI */}
-                    <div className="lg:col-span-2 border border-accent p-2 bg-bg-main flex items-center justify-center min-h-[300px]">
+                    <div className="lg:col-span-2 border border-accent lg:border-2 lg:border-gray-500 p-2 lg:p-4 bg-bg-main flex items-center justify-center min-h-[300px] lg:min-h-[500px]">
                       {(predictions[`${activeXAI}_vis`] || predictions[`${activeXAI}_gradcam`]) ? (
                         <img 
                           src={`data:image/jpeg;base64,${predictions[`${activeXAI}_vis`] || predictions[`${activeXAI}_gradcam`]}`} 
                           alt={`XAI ${activeXAI}`} 
-                          className="max-h-[500px] w-full object-contain"
+                          className="max-h-[400px] lg:max-h-[600px] w-full object-contain"
                         />
                       ) : (
-                        <div className="text-center space-y-3 text-highlight">
-                          <Activity className="w-8 h-8 mx-auto opacity-50" strokeWidth={1}/>
-                          <p className="text-xs uppercase tracking-widest">Brak mapy XAI dla tego modelu</p>
+                        <div className="text-center space-y-4 text-highlight lg:text-gray-400">
+                          <Activity className="w-8 h-8 lg:w-16 lg:h-16 mx-auto opacity-50" strokeWidth={1.5}/>
+                          <p className="text-xs lg:text-lg font-bold uppercase tracking-widest">Brak mapy XAI</p>
                         </div>
                       )}
                     </div>
 
-                    {/* SZCZEGÓŁY MODELU (Pojawiają się dynamicznie na podstawie kliknięcia) */}
-                    <div className="lg:col-span-1 space-y-6 flex flex-col justify-center">
+                    {/* SZCZEGÓŁY MODELU - WIĘKSZY TEKST */}
+                    <div className="lg:col-span-1 space-y-8 lg:space-y-12 flex flex-col justify-center">
+                      
+                      {/* NOWOŚĆ: WERDYKT DEEPSEEK DLA KONKRETNEGO MODELU */}
+                      <div className="border-l-4 border-text-main pl-4 lg:pl-6">
+                        <h3 className="text-[10px] lg:text-sm font-black text-highlight lg:text-gray-300 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <BrainCircuit className="w-4 h-4 lg:w-5 lg:h-5 text-text-main" /> Werdykt DeepSeek: {activeXAI.toUpperCase()}
+                        </h3>
+                        <p className="text-sm lg:text-2xl text-text-main font-bold leading-relaxed italic">
+                          {predictions[`${activeXAI}_llm`] 
+                            ? predictions[`${activeXAI}_llm`] 
+                            : `Oczekuje na wnioski z analizy metryk modelu ${activeXAI.toUpperCase()}...`}
+                        </p>
+                      </div>
+
                       <div>
-                        <h3 className="text-xs font-bold text-highlight uppercase tracking-widest mb-2 border-b border-accent pb-2">Metodologia</h3>
-                        <p className="text-sm text-text-main font-light leading-relaxed">
+                        <h3 className="text-xs lg:text-xl font-black text-highlight lg:text-gray-300 uppercase tracking-widest mb-3 border-b border-accent lg:border-gray-600 pb-3">Metodologia</h3>
+                        <p className="text-sm lg:text-2xl text-text-main font-semibold leading-relaxed">
                           {MODEL_DETAILS[activeXAI].desc}
                         </p>
                       </div>
+                      
                       <div>
-                        <h3 className="text-xs font-bold text-highlight uppercase tracking-widest mb-2 border-b border-accent pb-2">Interpretacja wizualna</h3>
-                        <p className="text-sm text-text-main font-light leading-relaxed">
+                        <h3 className="text-xs lg:text-xl font-black text-highlight lg:text-gray-300 uppercase tracking-widest mb-3 border-b border-accent lg:border-gray-600 pb-3">Interpretacja wizualna</h3>
+                        <p className="text-sm lg:text-2xl text-text-main font-semibold leading-relaxed">
                           {MODEL_DETAILS[activeXAI].xai}
                         </p>
                       </div>
                       
-                      {/* Symulowane techniczne metryki dla klimatu */}
-                      <div className="grid grid-cols-2 gap-3 pt-4 border-t border-accent">
+                      <div className="grid grid-cols-2 gap-4 lg:gap-8 pt-6 border-t border-accent lg:border-gray-600">
                         <div>
-                          <p className="text-[10px] text-highlight uppercase tracking-widest mb-1 flex items-center gap-1"><Clock className="w-3 h-3"/> Czas opóźnienia</p>
-                          <p className="text-sm font-bold text-text-main">~{Math.floor(Math.random() * 100 + 40)} ms</p>
+                          <p className="text-[10px] lg:text-sm text-highlight lg:text-gray-300 font-bold uppercase tracking-widest mb-2 flex items-center gap-2"><Clock className="w-3 h-3 lg:w-5 lg:h-5"/> Opóźnienie</p>
+                          <p className="text-sm lg:text-2xl font-black text-text-main">~{Math.floor(Math.random() * 100 + 40)} ms</p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-highlight uppercase tracking-widest mb-1 flex items-center gap-1"><Cpu className="w-3 h-3"/> VRAM</p>
-                          <p className="text-sm font-bold text-text-main">{Math.floor(Math.random() * 500 + 300)} MB</p>
+                          <p className="text-[10px] lg:text-sm text-highlight lg:text-gray-300 font-bold uppercase tracking-widest mb-2 flex items-center gap-2"><Cpu className="w-3 h-3 lg:w-5 lg:h-5"/> VRAM</p>
+                          <p className="text-sm lg:text-2xl font-black text-text-main">{Math.floor(Math.random() * 500 + 300)} MB</p>
                         </div>
                       </div>
                     </div>
@@ -260,13 +272,6 @@ export default function App() {
             )}
           </div>
         </div>
-
-        {/* STOPKA */}
-        <footer className="mt-12 pt-6 border-t border-accent text-center text-accent text-[10px] sm:text-xs uppercase tracking-widest space-y-1">
-            <p>AuthentiScan © 2026 - Zaawansowana Detekcja Treści Generatywnych</p>
-            <p className="font-light">System analizy wielomodelowej (Ensemble Learning)</p>
-        </footer>
-
       </div>
     </div>
   );
