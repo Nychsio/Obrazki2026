@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, f1_score, roc_curve
 import numpy as np
@@ -9,6 +9,7 @@ import os
 import sys
 import platform
 import PIL
+import gc  # <--- DODANE DO CZYSZCZENIA RAMU
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../../"))
@@ -20,55 +21,55 @@ from src.models.rgb.data import OpenFakeDataset, get_transforms
 from torch.utils.data import DataLoader
 
 def train_pca():
-    # === 🚀 GPU OPTIMIZATION FOR RTX 3090 Ti (Ampere) 🚀 ===
-    # Włączamy TF32 (TensorFloat-32) - sprzętowe przyspieszenie mnożenia macierzy bez utraty jakości
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    # Włączamy autotuning algorytmów konwolucyjnych dla tego konkretnego GPU
     torch.backends.cudnn.benchmark = True
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"🚀 Uruchamiam HYPER-SOTA Gradient PCA na: {device} (TF32: WŁĄCZONE)")
+    print(f"🚀 Uruchamiam STABILNE SOTA Gradient PCA na: {device}")
 
     os.makedirs("checkpoints", exist_ok=True)
     
-    # Inicjalizacja modelu i konwersja do formatu channels_last (Wymagane dla maksymalnej prędkości Tensor Cores)
     model = GradientPCADetector(device=device).to(device)
     model = model.to(memory_format=torch.channels_last)
     
-    # Maksymalizujemy CPU Workers, żeby nadążyć za kartą
-    workers = 0 if platform.system() == 'Windows' else 8
-    
-    # 🔥 Zwiększamy strumień danych, bo RTX 3090 Ti ma 24GB VRAM!
-    batch_size = 192 
+    # === 🔄 WZNOWIENIE TRENINGU (RESUME) ===
+    checkpoint_path = "checkpoints/best_pca_model.pt"
+    if os.path.exists(checkpoint_path):
+        print(f"🔥 ZNALEZIONO ZAPIS! Wczytuję wiedzę z {checkpoint_path}...")
+        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        best_auc = 0.7274 # Wpisujemy Twój ostatni najlepszy wynik z logów!
+    else:
+        best_auc = 0.0
+    # === ZABEZPIECZENIE RAMU (OOM KILLER FIX) ===
+    # Zmniejszamy agresję dataloaderów
+    workers = 0 if platform.system() == 'Windows' else 4
+    batch_size = 128 
     
     transforms = get_transforms()
     train_dataset = OpenFakeDataset(split="train", transform=transforms)
     val_dataset = OpenFakeDataset(split="test", transform=transforms)
     
-    # === TRENING: Zostawiamy pełną moc (workers) ===
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
         num_workers=workers, 
         pin_memory=True,
-        persistent_workers=(workers > 0)
+        # USUNIĘTE persistent_workers - procesy będą czyszczone z RAMu
+        prefetch_factor=2 if workers > 0 else None # Limit bufora
     )
-    
-    # === WALIDACJA: Twarde ZERO (1 pliku nie da się podzielić) ===
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
-        num_workers=0,      # <--- TO JEST KLUCZOWE! MUSI BYĆ 0.
-        pin_memory=True     # <--- Zwróć uwagę, że usunąłem stąd persistent_workers
+        num_workers=0, 
+        pin_memory=True
     )
 
     optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
     criterion = nn.BCEWithLogitsLoss()
-    scaler = GradScaler()
+    scaler = GradScaler('cuda') # Poprawiony scaler
 
-    # Zostawiamy 250 kroków, ale teraz w jednym kroku przetwarzamy 3x więcej zdjęć!
     steps_per_epoch = 250
     val_steps = 50
     best_auc = 0.0
@@ -88,18 +89,17 @@ def train_pca():
             except (IOError, OSError, ValueError, PIL.UnidentifiedImageError):
                 continue
                 
-            # Konwersja obrazów do channels_last w locie dla Tensor Cores
             images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
             
-            # Kuloodporna konwersja (zamienia teksty "fake"/"1" na float 1.0, resztę na 0.0)
+            # Kuloodporna konwersja labels
             numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
-            labels = torch.tensor(numeric_labels, dtype=torch.float32).view(-1, 1).to(device, non_blocking=True)
+            labels_tensor = torch.tensor(numeric_labels, dtype=torch.float32).view(-1, 1).to(device, non_blocking=True)
             
             optimizer.zero_grad()
             
             with torch.amp.autocast('cuda'):
                 logits = model(images)
-                loss = criterion(logits, labels.to(dtype=logits.dtype))
+                loss = criterion(logits, labels_tensor)
                 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -128,32 +128,24 @@ def train_pca():
                     
                 images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
                 
-                # Kuloodporna konwersja dla walidacji
                 numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
-                labels_tensor = torch.tensor(numeric_labels, dtype=torch.float32)
-                labels_gpu = labels_tensor.view(-1, 1).to(device, non_blocking=True)
+                labels_cpu_tensor = torch.tensor(numeric_labels, dtype=torch.float32)
+                labels_gpu = labels_cpu_tensor.view(-1, 1).to(device, non_blocking=True)
                 
                 with torch.amp.autocast('cuda'):
                     logits = model(images)
-                    v_loss = criterion(logits, labels_gpu.to(dtype=logits.dtype))
+                    v_loss = criterion(logits, labels_gpu)
                     probs = torch.sigmoid(logits)
                 
                 val_loss += v_loss.item()
                 valid_steps_done += 1
                 
                 val_preds.extend(probs.cpu().numpy().flatten().tolist())
-                val_labels_list.extend(labels_tensor.cpu().numpy().flatten().tolist())
-                
-                val_loss += v_loss.item()
-                valid_steps_done += 1
-                
-                val_preds.extend(probs.cpu().numpy().flatten().tolist())
-                val_labels_list.extend(labels_tensor.cpu().numpy().flatten().tolist())
+                val_labels_list.extend(labels_cpu_tensor.numpy().flatten().tolist())
                 
         avg_val_loss = val_loss / max(1, valid_steps_done)
         val_auc = roc_auc_score(val_labels_list, val_preds)
         
-        # Optymalizacja progu F1 (Youden's J)
         fpr, tpr, thresholds = roc_curve(val_labels_list, val_preds)
         optimal_idx = np.argmax(tpr - fpr)
         optimal_threshold = thresholds[optimal_idx]
@@ -169,6 +161,12 @@ def train_pca():
             best_auc = val_auc
             torch.save(model.state_dict(), "checkpoints/best_pca_model.pt")
             print("🌟 Zapisano nowy, POTĘŻNY model PCA (TF32 Optimized)!")
+
+        # === AGRESYWNE CZYSZCZENIE PAMIĘCI RAM ===
+        del train_iter
+        del val_iter
+        gc.collect()
+        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     train_pca()

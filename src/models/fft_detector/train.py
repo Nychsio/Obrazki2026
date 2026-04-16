@@ -1,190 +1,155 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.amp import autocast, GradScaler
 from tqdm import tqdm
+from sklearn.metrics import roc_auc_score, f1_score, roc_curve
 import numpy as np
 import os
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+import sys
+import gc
+import platform
+import PIL
 
-from src.data.data_loader import get_dataloaders
-from src.models.fft_detector.model import FFTResNetDetector
+# Gwarantuje prawidłowe ścieżki
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../../"))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-
-def rgb_to_fft_two_channel(inputs: torch.Tensor) -> torch.Tensor:
-    """
-    Konwertuje batch obrazów [B, 3, H, W] do reprezentacji FFT [B, 2, H, W]
-    (kanały: log-amplituda oraz faza), w pełni tensorowo na aktualnym urządzeniu.
-    """
-    if inputs.ndim != 4:
-        raise ValueError(f"Oczekiwano tensora 4D [B, C, H, W], otrzymano: {tuple(inputs.shape)}")
-
-    channels = inputs.size(1)
-    if channels == 2:
-        return inputs
-
-    if channels == 3:
-        # Luminancja w standardzie ITU-R BT.601
-        rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=inputs.device, dtype=inputs.dtype).view(1, 3, 1, 1)
-        gray = (inputs * rgb_weights).sum(dim=1)
-    elif channels == 1:
-        gray = inputs.squeeze(1)
-    else:
-        raise ValueError(f"Nieobsługiwana liczba kanałów wejściowych: {channels}")
-
-    fft = torch.fft.fft2(gray, dim=(-2, -1), norm="ortho")
-    fft_shifted = torch.fft.fftshift(fft, dim=(-2, -1))
-
-    amplitude = torch.log1p(torch.abs(fft_shifted))
-    phase = torch.angle(fft_shifted)
-
-    return torch.stack((amplitude, phase), dim=1)
-
-def safe_dataloader(dataloader):
-    """Tarcza MLOps: Generator pomijający uszkodzone paczki danych z Hugging Face"""
-    iterator = iter(dataloader)
-    while True:
-        try:
-            yield next(iterator)
-        except StopIteration:
-            break
-        except Exception as e:
-            print(f"\n⚠️ Tarcza włączona: Pominięto uszkodzony plik! ({e})")
-            continue
+# Upewnij się, że korzystasz z data loadera, który podaje ZWYKŁE RGB
+from src.models.rgb.data import OpenFakeDataset, get_transforms 
+from torch.utils.data import DataLoader
+from src.models.fft_detector.model import FFTDeepfakeDetector
 
 def train():
+    # Optymalizacje pod RTX 3090 Ti
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.backends.cudnn.benchmark = True
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Używane urządzenie: {device}")
+    print(f"🚀 Uruchamiam HYBRID-SOTA FFT Analyzer na: {device}")
 
-    # Utworzenie katalogu checkpoints jeśli nie istnieje
     os.makedirs("checkpoints", exist_ok=True)
+    model = FFTDeepfakeDetector().to(device)
+    model = model.to(memory_format=torch.channels_last)
 
-    model = FFTResNetDetector(num_classes=1).to(device)
-    train_loader, val_loader = get_dataloaders(batch_size=64, train_size=8000, val_size=2000)  # Zwiększone dla RTX 3090 Ti
+    # Bezpieczny RAM i Max Osiągi
+    workers = 0 if platform.system() == 'Windows' else 4
+    batch_size = 128 
     
+    transforms = get_transforms() # Musi zwracać obraz, nie wyliczone FFT!
+    train_dataset = OpenFakeDataset(split="train", transform=transforms)
+    val_dataset = OpenFakeDataset(split="test", transform=transforms)
+    
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, num_workers=workers, 
+        pin_memory=True, prefetch_factor=2 if workers > 0 else None
+    )
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
+
+    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5) 
-    
-    # --- NOWOŚĆ: LR Scheduler (zgodnie z audytem) ---
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
+    scaler = GradScaler('cuda')
 
-    epochs = 12  # Zwiększone dla pełnego treningu
+    steps_per_epoch = 250
+    val_steps = 50
+    best_auc = 0.0
     
-    # --- NOWOŚĆ: Parametry do Early Stopping ---
-    best_val_loss = float('inf')
-    patience = 4
-    trigger_times = 0
-    
-    print("Rozpoczęcie zaawansowanego treningu...")
-    
-    for epoch in range(epochs):
-        # --- FAZA TRENINGU ---
+    for epoch in range(12):
+        print(f"\nEpoch {epoch+1}/12 [Train]")
         model.train()
-        running_loss = 0.0
+        train_loss = 0
+        train_iter = iter(train_loader)
         
-        # Używamy safe_dataloader, żeby zepsute zdjęcia nas nie wysadziły w powietrze
-        progress_bar = tqdm(safe_dataloader(train_loader), desc=f"Epoka {epoch+1}/{epochs} [Train]")
-        for batch in progress_bar:
-            inputs_rgb = batch['image'].to(device)
-            inputs_fft = rgb_to_fft_two_channel(inputs_rgb)
-            if isinstance(batch['label'], (list, tuple)):
-                labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
-            else:
-                labels = batch['label'].to(device).float().unsqueeze(1)
+        for step in tqdm(range(steps_per_epoch)):
+            try:
+                images, labels = next(train_iter)
+            except StopIteration:
+                train_iter = iter(train_loader)
+                images, labels = next(train_iter)
+            except (IOError, OSError, ValueError, PIL.UnidentifiedImageError):
+                continue
+                
+            images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
+            
+            numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
+            labels_tensor = torch.tensor(numeric_labels, dtype=torch.float32).view(-1, 1).to(device, non_blocking=True)
             
             optimizer.zero_grad()
-            outputs = model(inputs_rgb, inputs_fft)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
             
-            running_loss += loss.item() * inputs_rgb.size(0)
-            progress_bar.set_postfix({'Loss': f"{loss.item():.4f}"})
+            with torch.amp.autocast('cuda'):
+                logits = model(images)
+                loss = criterion(logits, labels_tensor)
+                
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             
-        # Obliczanie średniego loss na podstawie faktycznej liczby próbek
-        total_train_samples = 0
-        for batch in train_loader:
-            total_train_samples += batch['image'].size(0)
-        epoch_train_loss = running_loss / total_train_samples if total_train_samples > 0 else 0.0 
+            train_loss += loss.item()
+            
+        print(f"Train Loss: {train_loss/steps_per_epoch:.4f}")
         
-        # --- FAZA WALIDACJI ---
+        # === WALIDACJA ===
         model.eval()
-        val_loss = 0.0
-        
-        # Listy do zbierania wyników dla scikit-learn
-        all_labels = []
-        all_probs = []
-        all_preds = []
+        val_loss = 0
+        val_preds, val_labels_list = [], []
+        val_iter = iter(val_loader)
+        valid_steps_done = 0
         
         with torch.no_grad():
-            for batch in tqdm(safe_dataloader(val_loader), desc=f"Epoka {epoch+1}/{epochs} [Val]", leave=False):
-                inputs_rgb = batch['image'].to(device)
-                inputs_fft = rgb_to_fft_two_channel(inputs_rgb)
-                if isinstance(batch['label'], (list, tuple)):
-                    labels = torch.tensor([int(x) for x in batch['label']]).to(device).float().unsqueeze(1)
-                else:
-                    labels = batch['label'].to(device).float().unsqueeze(1)
+            for step in tqdm(range(val_steps), desc="[Validation]"):
+                try:
+                    images, labels = next(val_iter)
+                except StopIteration:
+                    val_iter = iter(val_loader)
+                    images, labels = next(val_iter)
+                except (IOError, OSError, ValueError, PIL.UnidentifiedImageError):
+                    continue
+                    
+                images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
                 
-                outputs = model(inputs_rgb, inputs_fft)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item() * inputs_rgb.size(0)
+                numeric_labels = [1.0 if str(l).lower() in ['fake', '1', 'true', '1.0'] else 0.0 for l in labels]
+                labels_cpu_tensor = torch.tensor(numeric_labels, dtype=torch.float32)
+                labels_gpu = labels_cpu_tensor.view(-1, 1).to(device, non_blocking=True)
                 
-                probs = torch.sigmoid(outputs)
-                preds = (probs > 0.5).float()
+                with torch.amp.autocast('cuda'):
+                    logits = model(images)
+                    v_loss = criterion(logits, labels_gpu)
+                    probs = torch.sigmoid(logits)
                 
-                # Zbieranie danych (przenosimy na CPU dla numpy)
-                all_labels.extend(labels.cpu().numpy())
-                all_probs.extend(probs.cpu().numpy())
-                all_preds.extend(preds.cpu().numpy())
+                val_loss += v_loss.item()
+                valid_steps_done += 1
                 
-        # Obliczanie średniego val loss na podstawie faktycznej liczby próbek walidacyjnych
-        total_val_samples = 0
-        for batch in val_loader:
-            total_val_samples += batch['image'].size(0)
-        epoch_val_loss = val_loss / total_val_samples if total_val_samples > 0 else 0.0
+                val_preds.extend(probs.cpu().numpy().flatten().tolist())
+                val_labels_list.extend(labels_cpu_tensor.numpy().flatten().tolist())
+                
+        avg_val_loss = val_loss / max(1, valid_steps_done)
+        val_auc = roc_auc_score(val_labels_list, val_preds)
         
-        # --- NOWOŚĆ: Obliczanie zaawansowanych metryk ---
-        # Spłaszczamy listy
-        y_true = np.array(all_labels).flatten()
-        y_prob = np.array(all_probs).flatten()
-        y_pred = np.array(all_preds).flatten()
+        fpr, tpr, thresholds = roc_curve(val_labels_list, val_preds)
+        optimal_idx = np.argmax(tpr - fpr)
+        optimal_threshold = thresholds[optimal_idx]
         
-        val_acc = (y_pred == y_true).mean() * 100
+        val_bin_preds = [1 if p > optimal_threshold else 0 for p in val_preds]
+        val_f1 = f1_score(val_labels_list, val_bin_preds)
         
-        # Zabezpieczenie na wypadek, gdyby w batchu była tylko jedna klasa
-        try:
-            val_auc = roc_auc_score(y_true, y_prob)
-            val_precision = precision_score(y_true, y_pred, zero_division=0)
-            val_recall = recall_score(y_true, y_pred, zero_division=0)
-            val_f1 = f1_score(y_true, y_pred, zero_division=0)
-        except ValueError:
-            val_auc, val_precision, val_recall, val_f1 = 0.0, 0.0, 0.0, 0.0
+        print(f"Val Loss: {avg_val_loss:.4f} | Val ROC-AUC: {val_auc:.4f} | Val F1: {val_f1:.4f} (Opt. Threshold: {optimal_threshold:.2f})")
         
-        print(f"\n-> EPOKA {epoch+1} PODSUMOWANIE:")
-        print(f"   Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f}")
-        print(f"   Val Acc: {val_acc:.2f}% | AUC-ROC: {val_auc:.4f} | F1: {val_f1:.4f} | Prec: {val_precision:.4f} | Rec: {val_recall:.4f}")
+        scheduler.step(val_auc)
         
-        # Aktualizacja Schedulera
-        scheduler.step(epoch_val_loss)
-        
-        # --- NOWOŚĆ: Early Stopping i Checkpointing ---
-        if epoch_val_loss < best_val_loss:
-            print(f"   🌟 Poprawa Val Loss ({best_val_loss:.4f} -> {epoch_val_loss:.4f}). Zapisywanie najlepszego modelu...")
-            best_val_loss = epoch_val_loss
-            trigger_times = 0
-            
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': epoch_val_loss,
-                'metrics': {'acc': val_acc, 'auc': val_auc, 'f1': val_f1}
-            }, "checkpoints/fft_detector_best.pth")
-        else:
-            trigger_times += 1
-            print(f"   ⚠️ Brak poprawy. Early stopping counter: {trigger_times}/{patience}")
-            if trigger_times >= patience:
-                print("🛑 Early stopping przerwany trening, model przestał się uczyć.")
-                break
+        if val_auc > best_auc:
+            best_auc = val_auc
+            torch.save(model.state_dict(), "checkpoints/best_fft_model.pt")
+            print("🌟 Zapisano nowy SOTA model FFT!")
+
+        # Zabezpieczenie RAMU
+        del train_iter
+        del val_iter
+        gc.collect()
+        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     train()

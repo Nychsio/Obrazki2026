@@ -1,1 +1,21 @@
+/* frontend/src/index.css */
 @import "tailwindcss";
+
+@theme {
+  /* Definiujemy paletę prosto ze slajdów */
+  --color-bg-main: #000000; /* Głęboka czerń tła */
+  --color-text-main: #FFFFFF; /* Czysta biel tekstu */
+  --color-accent: #333333; /* Ciemnoszary do ramek/podziałów (subtelny) */
+  --color-highlight: #555555; /* Nieco jaśniejszy szary do hoverów */
+  
+  /* Ustawiamy domyślną czcionkę na czystą sans-serif */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Podstawowe ustawienia dla całej strony */
+@layer base {
+  body {
+    @apply bg-bg-main text-text-main font-sans antialiased;
+    letter-spacing: -0.01em; /* Subtelne ścieśnienie liter jak w profesjonalnym druku */
+  }
+}

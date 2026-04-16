@@ -13,8 +13,8 @@ from torchvision import transforms
 from captum.attr import LayerGradCam
 
 # Importy klas modeli
-from src.models.fft_detector.model import FFTResNetDetector
-from src.models.gradient_pca.model import GradientCovarianceExtractor
+from src.models.fft_detector.model import FFTDeepfakeDetector
+from src.models.gradient_pca.model import GradientPCADetector
 from src.models.fft_detector.transforms import ComplexFourierTransform
 from src.models.rgb.train import RGBClassifier
 from src.models.noise.model import NoiseBinaryClassifier
@@ -69,7 +69,7 @@ class InferenceEngine:
         model_path = self.models_dir / "fft_detector_best.pth"
         if model_path.exists():
             print("⏳ Ładowanie modelu FFT...")
-            model = FFTResNetDetector(num_classes=1)
+            model = FFTDeepfakeDetector()
             checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
             state_dict = checkpoint.get('model_state_dict', checkpoint)
             model.load_state_dict(state_dict)
@@ -97,14 +97,31 @@ class InferenceEngine:
             print(f"⚠️ Nie udało się załadować CLIP: {e}")
 
     def _load_pca(self):
-        model_path = self.models_dir / "best_gradient_pca_model.pt"
-        if model_path.exists():
-            print("⏳ Ładowanie modelu PCA...")
-            extractor = GradientCovarianceExtractor(device=self.device)
-            self.models['pca'] = extractor
-            print("✅ Model PCA załadowany i gotowy!")
-        else:
-            print(f"❌ Brak pliku: {model_path}")
+        try:
+            print("⏳ Ładowanie modelu PCA SOTA z nowej lokalizacji...")
+            from src.models.gradient_pca.model import GradientPCADetector
+            import os
+            import torch
+            
+            model = GradientPCADetector()
+            
+            # POPRAWIONA ŚCIEŻKA:
+            weights_path = "deployment/app/models/best_gradient_pca_model.pt"
+            
+            if os.path.exists(weights_path):
+                # ODKOMENTOWANE: Ładujemy prawdziwą moc!
+                state_dict = torch.load(weights_path, map_location=self.device)
+                model.load_state_dict(state_dict)
+                print(f"✅ Prawdziwe wagi PCA SOTA załadowane z {weights_path}!")
+            else:
+                print(f"⚠️ BŁĄD: Nie znaleziono pliku {weights_path}!")
+                print("Upewnij się, że plik nazywa się dokładnie 'best_gradient_pca_model.pt'.")
+                
+            model.to(self.device).eval() 
+            self.models['pca'] = model
+            
+        except Exception as e:
+            print(f"⚠️ Nie udało się załadować PCA SOTA: {e}")
 
     def _load_rgb(self):
         model_path = self.models_dir / "best_rgb_model.pt"
@@ -374,16 +391,49 @@ class InferenceEngine:
                 if gradcam_b64:
                     results['rgb_gradcam'] = gradcam_b64
 
-            # PRZYWRÓCONY BLOK PCA:
             if 'pca' in self.models:
-                import torchvision.transforms as transforms
-                pca_tensor = transforms.ToTensor()(image).unsqueeze(0).to(self.device)
-                pca_features = self.models['pca'](pca_tensor).cpu().numpy().tolist()[0]
+                try:
+                    import torchvision.transforms as transforms
+                    import cv2
+                    import numpy as np
 
-                results['pca_features'] = pca_features
-                results['pca_prob'] = 0.5 # PCA to ekstraktor, nie klasyfikator, dajemy neutralne 50%
+                    # 1. Prawdziwa analiza modelem SOTA (Ten wynik idzie do procentów)
+                    pca_tensor = transforms.ToTensor()(image).unsqueeze(0).to(self.device)
+                    
+                    with torch.no_grad():
+                        # Twój model zwraca (logits, heatmap)
+                        output = self.models['pca'](pca_tensor, return_heatmap=True)
+                        
+                        if isinstance(output, tuple):
+                            logits, _ = output # Heatmapę na razie ignorujemy, bierzemy logity
+                        else:
+                            logits = output
+                            
+                        # Konwersja na prawdopodobieństwo FAKE
+                        if logits.numel() == 1:
+                            fake_prob = torch.sigmoid(logits).item()
+                        else:
+                            # Jeśli masz klasyfikację 2-klasową (Real, Fake)
+                            fake_prob = torch.softmax(logits, dim=1)[0][1].item()
+                            
+                    results['pca_prob'] = fake_prob
 
-                pca_vis = self._generate_pca_vis(pca_features)
-                if pca_vis: results['pca_vis'] = pca_vis
+                    # 2. Generowanie elipsy dla Frontendu (Efekt wizualny)
+                    # Robimy to "klasycznie", żeby nie psuć Dashboardu
+                    img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255.0
+                    gx = cv2.Sobel(img_gray, cv2.CV_32F, 1, 0, ksize=3)
+                    gy = cv2.Sobel(img_gray, cv2.CV_32F, 0, 1, ksize=3)
+                    
+                    var_gx = float(np.var(gx))
+                    var_gy = float(np.var(gy))
+                    cov_xy = float(np.mean((gx - np.mean(gx)) * (gy - np.mean(gy))))
+                    
+                    # Wysyłamy cechy do rysowania elipsy
+                    pca_vis = self._generate_pca_vis([var_gx, cov_xy, cov_xy, var_gy])
+                    if pca_vis: 
+                        results['pca_vis'] = pca_vis
+                        
+                except Exception as e:
+                    print(f"🛑 Błąd inferencji PCA SOTA: {e}")
                 
         return results
